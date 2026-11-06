@@ -259,7 +259,7 @@ I'M HOME FROM SCHOOL · 15:44
 ### Usage
 
 - `python3 configure.py` runs the full guided setup.
-- `python3 configure.py messaging` (or `location`, `calendar`, `crew`, `presets`, `sounds`, `test`) re-runs one section.
+- `python3 configure.py messaging` (or `location`, `calendar`, `contacts`, `crew`, `presets`, `sounds`, `security`, `test`) re-runs one section. Contacts, crew and presets use add/remove/rename menus, so one item can change without redoing the rest.
 - `python3 configure.py show` prints the current config with secrets masked (`tk_…abcd`).
 
 ### Sections

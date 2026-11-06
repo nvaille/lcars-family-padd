@@ -573,6 +573,121 @@ class EditorTests(unittest.TestCase):
         self.assertIn("GRAN (not a contact", self.text())
 
 
+class TourTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="lcars-tour-")
+        self.path = os.path.join(self.dir, "config.json")
+        self.sounds = os.path.join(self.dir, "sounds")
+        os.mkdir(self.sounds)
+        self.output = []
+        self.bots = []
+
+    def tour(self, answers, secrets=(), existing=None, batches=None, running=False):
+        if existing is not None:
+            with open(self.path, "w") as fh:
+                json.dump(existing, fh)
+
+        def make(token):
+            if batches is None:
+                raise AssertionError("the tour should not contact Telegram here")
+            bot = FakeBot(token, batches)
+            self.bots.append(bot)
+            return bot
+
+        def fetch(url):
+            if url.startswith(configure.GEOCODE_URL):
+                return GEO
+            raise AssertionError("unexpected fetch")
+        ask = Script(answers)
+        code = configure.run_section(self.path, "tour", ask=ask, secret=Script(secrets), out=self.output.append,
+                                     fetch=fetch, sounds_dir=self.sounds, make_transport=make,
+                                     check_server=lambda port: running)
+        self.assertEqual(ask.answers, [], "unused answers; output:\n" + self.text())
+        return code
+
+    def saved(self):
+        with open(self.path) as fh:
+            return json.load(fh)
+
+    def text(self):
+        return "\n".join(self.output)
+
+    def test_first_run_without_messaging(self):
+        answers = ["Springfield", "2", "",   # location: pick Illinois, keep label
+                   "",                        # no text messaging
+                   "", "50", "", "", "", "",  # sounds: volume 50
+                   ""]                        # save
+        self.assertEqual(self.tour(answers, secrets=[""]), 0, self.text())
+        cfg = self.saved()
+        self.assertEqual(cfg, {"latitude": 39.8017, "longitude": -89.6437,
+                               "location_name": "Springfield, Illinois", "sound_volume": 0.5})
+        self.assertNotIn("Test transmission", self.text())
+        self.assertNotIn("Preset messages", self.text())
+
+    def test_rerun_with_messaging_on_changes_nothing(self):
+        answers = ["",                    # keep location
+                   "",                    # keep bot token
+                   "",                    # contacts menu: done
+                   "",                    # no family group
+                   "",                    # crew menu: done
+                   "", "", "",            # presets done, replies done, signature
+                   "", "", "", "", "", "",  # sounds
+                   "", "",                # allowlist done, rate limit
+                   "n"]                   # no test transmission
+        self.assertEqual(self.tour(answers, secrets=[""], existing=FAMILY, batches=[]), 0, self.text())
+        self.assertIn("No changes", self.text())
+        self.assertEqual(self.saved(), FAMILY)
+        for section in ("Location", "Calendar", "Text messaging", "Contacts", "Crew", "Preset messages",
+                        "Quick replies", "Sounds", "Kiosk security", "Test transmission"):
+            self.assertIn("== %s" % section, self.text())
+
+    def test_messaging_problem_keeps_the_rest_of_the_tour(self):
+        answers = ["Springfield", "1", "Home",  # location
+                   "y",                          # set up messaging...
+                   "",                           # ...but the server is running: don't continue
+                   "", "", "", "", "", "",       # sounds
+                   ""]                           # save
+        self.assertEqual(self.tour(answers, secrets=[""], running=True), 0, self.text())
+        cfg = self.saved()
+        self.assertEqual(cfg["location_name"], "Home")
+        self.assertNotIn("messaging_provider", cfg)
+        self.assertIn("the rest of the setup continues", self.text())
+
+    def test_failed_pairing_undoes_messaging_changes(self):
+        answers = ["", "y"]  # keep location, try messaging (nobody pairs)
+        answers += ["", "", "", "", "", ""]  # sounds; nothing changed, so no save question
+        code = self.tour(answers, secrets=["", GOOD_TOKEN], batches=[])
+        self.assertEqual(code, 0, self.text())
+        self.assertIn("No contacts paired", self.text())
+        self.assertNotIn("telegram_bot_token", self.saved() if os.path.exists(self.path) else {})
+
+
+class TestCommandTests(unittest.TestCase):
+    def test_sends_and_confirms(self):
+        path = os.path.join(tempfile.mkdtemp(), "config.json")
+        with open(path, "w") as fh:
+            json.dump(FAMILY, fh)
+        out, bots = [], []
+
+        def make(token):
+            bots.append(FakeBot(token, [tap_test_button]))
+            return bots[-1]
+        code = configure.run_test(path, ask=Script([""]), out=out.append, make_transport=make,
+                                  check_server=lambda port: False)
+        self.assertEqual(code, 0, "\n".join(out))
+        self.assertIn("ACKNOWLEDGED BY DAD", "\n".join(out))
+        self.assertEqual(sorted(r for r, _, _ in bots[0].sent), ["111", "222"])
+        with open(path) as fh:
+            self.assertEqual(json.load(fh), FAMILY)  # the test never writes the config
+
+    def test_needs_contacts(self):
+        path = os.path.join(tempfile.mkdtemp(), "config.json")
+        out = []
+        self.assertEqual(configure.run_test(path, ask=Script([]), out=out.append,
+                                            check_server=lambda port: False), 1)
+        self.assertIn("No contacts are paired yet", "\n".join(out))
+
+
 class HelperTests(unittest.TestCase):
     def test_mask(self):
         self.assertEqual(configure.mask(GOOD_TOKEN), "…AAAA")

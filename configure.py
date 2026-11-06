@@ -2,6 +2,8 @@
 """
 LCARS Family PADD - setup wizard (terminal). Standard library only.
 
+  python3 configure.py             guided setup: every section below, one after another,
+                                   with a single save at the end
   python3 configure.py location    weather location: look up a city, pick the right match
   python3 configure.py calendar    calendar feed (.ics / webcal) address, checked before saving
   python3 configure.py messaging   set up Telegram messaging: bot token, pair contacts,
@@ -12,7 +14,9 @@ LCARS Family PADD - setup wizard (terminal). Standard library only.
                                    the reply buttons on your phone, and the PADD's signature
   python3 configure.py sounds      sound effects, volume, quiet hours, your own sound files
   python3 configure.py security    which devices may use messaging, and the send rate limit
+  python3 configure.py test        send a test message to every contact and wait for a reply tap
   python3 configure.py show        print the current settings with secrets masked
+  python3 configure.py help        show this help
 
 In every question, pressing Enter keeps the value shown in [brackets].
 Run it on the server machine, in its own terminal window. For messaging, stop the PADD
@@ -690,6 +694,46 @@ class Wizard(Setup):
         if pos is not None:
             items.insert(pos, items.pop(idx))
 
+    # ----- the guided tour (python3 configure.py with no command) -----
+
+    def section_tour(self):
+        self.out("\nThis walks through every PADD setting. Nothing is saved until the end,\n"
+                 "where you'll see a list of the changes first.")
+        self.section_location()
+        self.section_calendar()
+        if self.messaging_needed():
+            self._tour_messaging()
+        else:
+            self.out("\n== Text messaging (optional) ==\n"
+                     "The PADD can send preset messages to family phones through a free Telegram bot.\n"
+                     "Everyone who gets messages needs the Telegram app, and the PADD server must be\n"
+                     "stopped while phones are paired. You can also do this later with:\n"
+                     "  python3 configure.py messaging")
+            if self.yes("Set up text messaging now?", default=False):
+                self._tour_messaging()
+        if self.setting_up_messaging:
+            self.section_presets()
+        self.section_sounds()
+        if self.setting_up_messaging:
+            self.section_security()
+
+    def _tour_messaging(self):
+        """Messaging inside the tour: if it can't finish, undo it and carry on with the rest."""
+        keys = ("messaging_provider", "telegram_bot_token", "telegram_group_chat_id", "contacts", "crew",
+                "message_presets")
+        snapshot = dict((k, copy.deepcopy(self.raw[k]) if k in self.raw else MISSING) for k in keys)
+        try:
+            self.section_messaging()
+        except Abort as e:
+            for k, v in snapshot.items():
+                if v is MISSING:
+                    self.raw.pop(k, None)
+                else:
+                    self.raw[k] = v
+            self.setting_up_messaging = False
+            self.out("\n%s\nMessaging settings were left as they were; the rest of the setup continues.\n"
+                     "(Later:  python3 configure.py messaging)" % e)
+
     # ----- messaging (the whole Telegram setup) -----
 
     def section_messaging(self):
@@ -1050,13 +1094,13 @@ def run_section(path, name, ask=input, secret=getpass.getpass, out=print, fetch=
     before = copy.deepcopy(raw)
     wiz = Wizard(raw, ask, secret, out, fetch, sounds_dir, make_transport, check_server)
     out("LCARS PADD setup: %s\nConfig file: %s\n(Press Enter to keep the value in [brackets]. "
-        "Ctrl+C quits without saving.)" % (name, path))
+        "Ctrl+C quits without saving.)" % ("full setup" if name == "tour" else name, path))
     saved = False
     try:
         getattr(wiz, "section_" + name)()
         saved = save_changes(path, before, raw, wiz)
         unchanged = not changed_keys(before, raw)
-        if name == "messaging" and (saved or unchanged):
+        if wiz.setting_up_messaging and (saved or unchanged):
             wiz.step_test()
     except Abort as e:
         out("\n%s%s" % (e, "" if saved else " Nothing saved."))
@@ -1071,6 +1115,26 @@ def run_section(path, name, ask=input, secret=getpass.getpass, out=print, fetch=
     return 0 if saved or unchanged else 1
 
 
+def run_test(path, ask=input, out=print, make_transport=server.TelegramTransport,
+             check_server=server_running):
+    wiz = Wizard(load_raw(path), ask, out=out, make_transport=make_transport, check_server=check_server)
+    out("LCARS PADD setup: test transmission\nConfig file: %s" % path)
+    try:
+        if not wiz.contacts():
+            raise Abort("No contacts are paired yet. Run:  python3 configure.py messaging")
+        wiz.connect()
+        wiz.step_test()
+    except Abort as e:
+        out("\n%s" % e)
+        return 1
+    except (KeyboardInterrupt, EOFError):
+        out("\nCancelled.")
+        return 1
+    finally:
+        wiz.finish()
+    return 0
+
+
 def run_show(path, out=print):
     raw = load_raw(path)
     out("Config file: %s%s" % (path, "" if raw else " (not found)"))
@@ -1082,12 +1146,16 @@ def run_show(path, out=print):
 def main(argv):
     command = argv[1] if len(argv) > 1 else ""
     path = server.config_path()
+    if command == "":
+        return run_section(path, "tour")
     if command == "show":
         return run_show(path)
+    if command == "test":
+        return run_test(path)
     if command in SECTIONS:
         return run_section(path, command)
     print(__doc__.strip())
-    return 0 if command in ("", "-h", "--help", "help") else 2
+    return 0 if command in ("-h", "--help", "help") else 2
 
 
 if __name__ == "__main__":
