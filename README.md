@@ -20,9 +20,11 @@ Requires Python 3.9+. Standard library only, so there's nothing to install.
 ```bash
 git clone https://github.com/nvaille/lcars-family-padd.git
 cd lcars-family-padd
-cp config.example.json config.json   # then edit config.json
+python3 configure.py   # guided setup: location, calendar, optional messaging, sounds
 python3 server.py
 ```
+
+The setup wizard asks one question at a time and saves to `config.json`. You can also copy `config.example.json` to `config.json` and edit it by hand.
 
 Open `http://<server-ip>:8000` on the kiosk. On iPad, use **Share → Add to Home Screen** for full-screen mode.
 
@@ -62,6 +64,33 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 
 `LCARS_CONFIG` can point to a config file somewhere else. Settings ending in `_JSON` take JSON text when set as environment variables.
 
+### Setup wizard
+
+`configure.py` is a terminal wizard. Run it on the server machine. Each command sets up one part, so you can change one thing without going through everything:
+
+| Command | What it sets up |
+|---|---|
+| `python3 configure.py` | Everything below, one section after another, with a single save at the end |
+| `python3 configure.py location` | Weather location: type a city (e.g. `Springfield, IL`) and pick the right match |
+| `python3 configure.py calendar` | Calendar feed address. Typing is hidden, and the feed is checked before saving ("Found 12 upcoming events…") |
+| `python3 configure.py messaging` | Telegram bot, contacts, family group and crew (see below) |
+| `python3 configure.py contacts` | Add (pair), remove or rename the people who get messages |
+| `python3 configure.py crew` | Add, remove, rename or reorder the kids who send messages |
+| `python3 configure.py presets` | Preset messages (text, order, default recipient), reply buttons and the PADD's signature |
+| `python3 configure.py sounds` | Sound on/off, volume, quiet hours, alert repeats, and your own sound files |
+| `python3 configure.py security` | Which devices may use messaging (by IP address) and the hourly send limit |
+| `python3 configure.py test` | Sends a test message to every contact and waits for a reply tap |
+| `python3 configure.py show` | Prints your settings with secrets masked |
+
+How it behaves:
+
+- **Keeping values:** pressing Enter keeps the value shown in `[brackets]`.
+- **Lists:** contacts, crew, presets and reply buttons use a menu like `[A]dd [R]emove re[N]ame [D]one`. Changing one item leaves the others alone.
+- **Contacts and presets stay in step:** renaming a contact updates any preset aimed at them. Removing a contact makes their presets ask HAIL WHOM? instead.
+- **Saving:** before saving, the wizard lists what's changing and asks first. Only those settings are written. Everything else in `config.json` stays as it was, and the previous version is kept as `config.json.bak`. Both files are readable only by you.
+- **Quitting:** Ctrl+C quits without saving.
+- **Restart:** the server reads `config.json` when it starts, so restart it after saving. The wizard reminds you.
+
 ### Text messages (Telegram)
 
 Kids can send preset messages ("I'M HOME FROM SCHOOL") from the PADD to parents' phones, and parents can reply. Messages go through a free Telegram bot. Everyone who receives PADD messages needs the Telegram app.
@@ -71,11 +100,11 @@ Kids can send preset messages ("I'M HOME FROM SCHOOL") from the PADD to parents'
    - It shows how to create a bot with @BotFather, then asks for the token. The token is typed hidden and checked with Telegram.
    - It pairs each contact. They open the bot's link and tap START, then you give them a display name (MOM, DAD…).
    - Optionally, it links a family group for ALL HANDS: add the bot to the group and send `/padd` there.
-   - It asks for the crew (the kids' names) and saves everything to `config.json`. The previous version is kept as `config.json.bak`.
+   - It asks for the crew (the kids' names), shows what's changing, and saves to `config.json`. The previous version is kept as `config.json.bak`.
    - Finally, it sends a test transmission and waits for someone to tap a reply button.
 3. **Start the server again:** `python3 server.py`
 
-`python3 configure.py show` prints your settings with secrets masked.
+Running `messaging` again shows menus for your existing contacts and crew instead of starting over. To pair one more person later, use `python3 configure.py contacts` and choose `[A]dd`. Only adding a contact or the test needs the server stopped. Renaming and removing work any time. To change which presets the kids see, use `python3 configure.py presets`.
 
 ### Sounds and quiet hours
 
