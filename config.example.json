@@ -6,5 +6,37 @@
   "port": 8000,
   "max_events": 5,
   "lookahead_days": 60,
-  "timed_default_minutes": 60
+  "timed_default_minutes": 60,
+
+  "messaging_provider": "none",
+  "telegram_bot_token": "PASTE_YOUR_BOT_TOKEN_HERE",
+  "telegram_group_chat_id": "",
+  "contacts": [
+    {"name": "MOM", "telegram_chat_id": "MOM_CHAT_ID_FROM_CONFIGURE_PY"},
+    {"name": "DAD", "telegram_chat_id": "DAD_CHAT_ID_FROM_CONFIGURE_PY"}
+  ],
+  "crew": ["SAM", "RILEY"],
+  "padd_sender_name": "HOME PADD",
+  "message_presets": [
+    {"text": "I'M HOME FROM SCHOOL", "to": "ALL"},
+    {"text": "HOME SAFE", "to": "ALL"},
+    {"text": "PLEASE CALL HOME"},
+    {"text": "NEED A RIDE"},
+    {"text": "AT A FRIEND'S"},
+    {"text": "ALL GOOD"}
+  ],
+  "quick_replies": ["GOT IT", "CALL ME", "ON MY WAY"],
+  "allow_custom_messages": false,
+  "message_retention_hours": 24,
+  "max_message_length": 160,
+  "send_rate_limit_per_hour": 10,
+  "kiosk_allowed_ips": [],
+
+  "sounds_enabled": true,
+  "sound_volume": 0.6,
+  "tap_sounds": true,
+  "quiet_hours": "22:00-07:00",
+  "incoming_repeat_minutes": 5,
+  "incoming_repeat_max": 3,
+  "sound_files": {}
 }

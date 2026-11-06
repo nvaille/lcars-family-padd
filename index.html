@@ -291,6 +291,78 @@ body {
 @-webkit-keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.25; } }
 @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.25; } }
 .blink { -webkit-animation: blink 2.4s steps(1) infinite; animation: blink 2.4s steps(1) infinite; }
+
+/* ===================================================================
+   COMMS (family text messages). Spine segments become the nav buttons;
+   only the lower bay and lower spine change per screen.
+   =================================================================== */
+.spnav { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.spb { flex: 1 1 0; min-height: 3rem; margin-top: 0.375rem; font-size: 1.25rem; }
+.spb.off { color: rgba(0,0,0,0.3); }
+.spb.code { font-size: 1rem; }
+.sp-4.tap, .sp-5.tap { font-size: 1.25rem; }
+.tap { cursor: pointer; }
+.tap:active { opacity: 0.6; }
+@-webkit-keyframes alert { 0% { background-color: #cc4444; } 50% { background-color: #ff6600; } }
+@keyframes alert { 0% { background-color: #cc4444; } 50% { background-color: #ff6600; } }
+.sp.alert { -webkit-animation: alert 1.4s steps(1) infinite; animation: alert 1.4s steps(1) infinite; }
+
+/* INCOMING TRANSMISSION strip (replaces the Stoic Directive while unread) */
+.incoming { flex: 0 0 auto; margin-bottom: 1.25rem; }
+.hd-in h2 { color: #ff6600; }  .hd-in .run { background: #ff6600; }
+.in-sub { font-size: 1.125rem; letter-spacing: 0.08em; color: #ff9900; margin-top: 0.5rem;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.in-sub b { color: #66ccff; font-weight: 700; }
+.in-text { font-size: 2rem; line-height: 1.2; color: #ffcc99; text-transform: none; margin-top: 0.3rem;
+           overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+/* comms bay */
+.cm { flex-direction: column; }
+.hd-cm h2 { color: #ff9900; }  .hd-cm .run { background: #ff9900; }
+.cm-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.cm-msg { font-size: 1.5rem; color: #ff9900; letter-spacing: 0.06em; padding-top: 1rem; }
+
+/* Communications Log rows */
+.lg-row { flex: 0 0 3.5rem; height: 3.5rem; display: flex; flex-direction: row; align-items: center; margin-top: 0.5rem; }
+.lg-tab { flex: 0 0 0.75rem; height: 100%; margin-right: 0.75rem; }
+.lg-in .lg-tab { background: #66ccff; }
+.lg-out .lg-tab { background: #ff9900; }
+.lg-arr { flex: 0 0 auto; width: 0; height: 0; margin-right: 0.75rem;
+          border-top: 0.5rem solid transparent; border-bottom: 0.5rem solid transparent; }
+.lg-in .lg-arr { border-right: 0.75rem solid #66ccff; }
+.lg-out .lg-arr { border-left: 0.75rem solid #ff9900; }
+.lg-who { flex: 0 0 11.5rem; font-size: 1.375rem; font-weight: 700; color: #ffcc99; padding-right: 0.5rem;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-time { flex: 0 0 4rem; font-size: 1.25rem; color: #66ccff; }
+.lg-txt { flex: 1 1 auto; min-width: 0; font-size: 1.375rem; color: #ffcc99; text-transform: none; padding-right: 0.75rem;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-st { flex: 0 0 8.75rem; text-align: right; font-size: 1.125rem; letter-spacing: 0.06em; color: #ff9900;
+         white-space: nowrap; overflow: hidden; }
+.st-new { color: #ff6600; -webkit-animation: blink 1.4s steps(1) infinite; animation: blink 1.4s steps(1) infinite; }
+.st-fail { color: #cc4444; }
+.st-ack { color: #66ccff; }
+
+/* transmission detail */
+.cm-meta { flex: 0 0 auto; font-size: 1.25rem; letter-spacing: 0.08em; color: #66ccff; margin-top: 0.6rem; }
+.cm-meta.fail { color: #cc4444; }
+.cm-text { flex: 1 1 auto; min-height: 0; overflow: hidden; font-size: 2.25rem; line-height: 1.2; color: #ffcc99;
+           text-transform: none; margin-top: 0.75rem; word-wrap: break-word; }
+
+/* choice panels (LCARS blocks: square corners, label bottom-right) */
+.opts { flex: 0 0 auto; display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 0.75rem; }
+.opt { width: 32.6%; height: 5.75rem; padding: 0.5rem 0.75rem; color: #000; font-weight: 700; font-size: 1.375rem;
+       line-height: 1.05; text-align: right; display: flex; flex-direction: column; justify-content: flex-end; }
+.opt:nth-child(3n+2), .opt:nth-child(3n+3) { margin-left: 1.1%; }
+.opt:nth-child(n+4) { margin-top: 0.5rem; }
+
+/* confirm + result */
+.cf-route { flex: 0 0 auto; font-size: 1.625rem; font-weight: 700; letter-spacing: 0.06em; color: #66ccff; margin-top: 0.75rem; }
+.cf-text { flex: 0 1 auto; min-height: 0; overflow: hidden; font-size: 2.75rem; line-height: 1.15; color: #ffcc99; margin-top: 0.4rem; }
+.rs-big { flex: 0 0 auto; font-size: 3rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; color: #ffcc99; margin-top: 1.25rem; }
+.rs-big.fail { color: #cc4444; }
+.rs-sub { flex: 0 0 auto; font-size: 1.5rem; letter-spacing: 0.06em; color: #66ccff; margin-top: 0.75rem; }
+.rs-dc { flex: 0 0 auto; font-size: 1.25rem; line-height: 1.55; color: #ff9900; letter-spacing: 0.35em;
+         margin-top: 1rem; white-space: nowrap; overflow: hidden; }
 </style>
 </head>
 <body>
@@ -314,8 +386,8 @@ body {
         <div class="caps">
           <div class="capm c">01-57585</div>
           <div class="capm a">02-394</div>
-          <div class="capm a">03-2187</div>
-          <div class="capm o"><small class="blink">2247 - SYS</small>04-47219</div>
+          <div class="capm a" id="cap-audio"><small id="cap-audio-s" style="display:none">&nbsp;</small><span id="cap-audio-m">03-2187</span></div>
+          <div class="capm o"><small class="blink" id="cap-sys">2247 - SYS</small>04-47219</div>
         </div>
       </div>
       <div class="bar-row">
@@ -332,9 +404,12 @@ body {
   <div class="sec sec-bot">
     <div class="spine">
       <div class="sp sp-elbow-b sp-bottom">03-111968</div>
-      <div class="sp sp-4 sp-bottom">04-041969</div>
-      <div class="sp sp-5 sp-bottom">05-1701D</div>
-      <div class="sp sp-6 sp-bottom">06-071984</div>
+      <div class="spnav" id="sp-dash">
+        <div class="sp sp-4 sp-bottom" id="sp-hail">04-041969</div>
+        <div class="sp sp-5 sp-bottom" id="sp-comms">05-1701D</div>
+        <div class="sp sp-6 sp-bottom">06-071984</div>
+      </div>
+      <div class="spnav" id="sp-cm" style="display:none"></div>
     </div>
     <div class="zone">
       <div class="ic ic-bot"><div></div></div>
@@ -345,7 +420,7 @@ body {
         <div class="seg long a"><div class="rail rail-b"></div><div class="cut cut-b"></div></div>
         <div class="seg cap o"></div>
       </div>
-      <div class="bot-body">
+      <div class="bot-body" id="dash-body">
 
         <!-- ENVIRONMENTAL SENSORS -->
         <div class="col-wx">
@@ -367,6 +442,12 @@ body {
         </div>
 
         <div class="col-right" id="col-right">
+          <!-- INCOMING TRANSMISSION (shown instead of the directive while a message is unread) -->
+          <div class="incoming tap" id="incoming" style="display:none">
+            <div class="hd hd-in"><h2>Incoming Transmission</h2><div class="run"></div><span class="sig blink" id="in-sig">PRIORITY</span></div>
+            <div class="in-sub" id="in-sub">&nbsp;</div>
+            <div class="in-text" id="in-text">&nbsp;</div>
+          </div>
           <!-- STOIC DIRECTIVE -->
           <div class="stoic" id="stoic">
             <div class="hd hd-st"><h2>Stoic Directive</h2><div class="run"></div><span class="sig" id="st-sig">--</span></div>
@@ -381,6 +462,8 @@ body {
         </div>
 
       </div>
+      <!-- COMMS BAY (communications log, transmission detail, open channel) -->
+      <div class="bot-body cm" id="comms" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -422,6 +505,7 @@ body {
     fitQuote();
     trimEvents();
     trimCascade();
+    if (comms.screen !== 'dash') { render(); }
   }
 
   /* ---------- kiosk hardening ---------- */
@@ -842,11 +926,853 @@ body {
     });
   }
 
-  /* ---------- display settings (location label) from config.json via server.py ---------- */
+  /* ==========================================================================
+     SOUNDS (plan section 8). Original synthesized tones by default; optional
+     user files from sounds/. iOS 9 only unlocks Web Audio from a touchend, so
+     audio is "armed" by the first touch after every page load.
+     Automatic cues (incoming, ack) are silent during quiet hours; cues a person
+     triggers play at 30% volume then.
+     ========================================================================== */
+  var CUE_ORDER = ['tap', 'open', 'transmit', 'sent', 'incoming', 'ack', 'fail'];
+  var AUTO_CUES = { incoming: true, ack: true };
+  var QUIET_VOLUME = 0.3;
+  var LONG_PRESS_MS = 700;
+  var TEST_STEP_MS = 1300;
+  var audio = { ctx: null, armed: false, buffers: {}, filesRequested: false, seq: 0, cfg: null, testing: false };
+
+  function startNode(node, when) { if (node.start) { node.start(when); } else { node.noteOn(when); } }
+  function stopNode(node, when) { if (node.stop) { node.stop(when); } else { node.noteOff(when); } }
+  function newGain(ctx) { return ctx.createGain ? ctx.createGain() : ctx.createGainNode(); }
+
+  function audioCtx() {
+    if (!audio.ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { return null; }
+      try { audio.ctx = new AC(); } catch (e) { return null; }
+    }
+    return audio.ctx;
+  }
+
+  // One shaped tone: quick attack, exponential decay. f2 = optional sweep target.
+  function tone(at, f1, f2, dur, peak, type) {
+    var ctx = audio.ctx, o = ctx.createOscillator(), g = newGain(ctx);
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f1, at);
+    if (f2) { o.frequency.exponentialRampToValueAtTime(f2, at + dur); }
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(Math.max(peak, 0.0002), at + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g);
+    g.connect(ctx.destination);
+    startNode(o, at);
+    stopNode(o, at + dur + 0.02);
+  }
+
+  function synth(name, v) {
+    var t = audio.ctx.currentTime + 0.02, s, i;
+    if (name === 'tap') {                       // short high blip
+      tone(t, 1200, 0, 0.04, v * 0.5, 'triangle');
+    } else if (name === 'incoming') {           // rising three-tone chirp, twice
+      for (i = 0; i < 2; i++) {
+        s = t + i * 0.55;
+        tone(s, 880, 0, 0.11, v, 'sine');
+        tone(s + 0.12, 1175, 0, 0.11, v, 'sine');
+        tone(s + 0.24, 1568, 0, 0.16, v, 'sine');
+      }
+    } else if (name === 'transmit') {           // quick upward sweep
+      tone(t, 420, 1680, 0.28, v * 0.7, 'triangle');
+    } else if (name === 'sent') {               // two-tone confirm, low -> high
+      tone(t, 660, 0, 0.12, v, 'sine');
+      tone(t + 0.13, 990, 0, 0.2, v, 'sine');
+    } else if (name === 'ack') {                // soft single chime
+      tone(t, 1320, 0, 0.5, v * 0.6, 'sine');
+    } else if (name === 'fail') {               // low double buzz
+      tone(t, 160, 0, 0.16, v * 0.4, 'square');
+      tone(t + 0.22, 150, 0, 0.2, v * 0.4, 'square');
+    } else if (name === 'open') {               // gentle two-note channel open
+      tone(t, 523, 0, 0.14, v * 0.8, 'sine');
+      tone(t + 0.15, 784, 0, 0.22, v * 0.8, 'sine');
+    }
+  }
+
+  function play(name, v) {
+    var ctx = audio.ctx;
+    if (!ctx || v <= 0) { return; }
+    try {
+      var buf = audio.buffers[name];
+      if (buf) {
+        var src = ctx.createBufferSource(), g = newGain(ctx);
+        src.buffer = buf;
+        g.gain.value = v;
+        src.connect(g);
+        g.connect(ctx.destination);
+        startNode(src, 0);
+      } else {
+        synth(name, v);
+      }
+    } catch (e) {}
+  }
+
+  function soundsOn() { return !!(audio.cfg && audio.cfg.sounds_enabled); }
+
+  function parseHM(text) {
+    var m = /^(\d\d):(\d\d)$/.exec(text || '');
+    return m ? +m[1] * 60 + +m[2] : null;
+  }
+  // Quiet hours like "22:00-07:00" (may cross midnight), on the kiosk's own clock.
+  function inQuietHours(d) {
+    var qh = audio.cfg && audio.cfg.quiet_hours;
+    if (!qh) { return false; }
+    var parts = qh.split('-'), a = parseHM(parts[0]), b = parseHM(parts[1]);
+    if (a === null || b === null || a === b) { return false; }
+    var now = d.getHours() * 60 + d.getMinutes();
+    return a < b ? (now >= a && now < b) : (now >= a || now < b);
+  }
+
+  // Every sound goes through here.
+  function cue(name) {
+    audio.seq++;
+    if (!soundsOn() || audio.testing) { return; }
+    if (name === 'tap' && !audio.cfg.tap_sounds) { return; }
+    var quiet = inQuietHours(new Date());
+    if (quiet && AUTO_CUES[name]) { return; }
+    play(name, audio.cfg.sound_volume * (quiet ? QUIET_VOLUME : 1));
+  }
+
+  // Runs (capture phase) on every touchend/mousedown/click until audio is confirmed running.
+  function armAudio() {
+    if (!soundsOn()) { return; }
+    var ctx = audioCtx();
+    if (!ctx) { return; }
+    if (audio.armed && ctx.state !== 'suspended' && ctx.state !== 'interrupted') { return; }
+    audio.armed = false;
+    try {
+      var src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);   // one silent sample
+      src.connect(ctx.destination);
+      startNode(src, 0);
+      if (ctx.resume) { ctx.resume(); }
+    } catch (e) { return; }
+    // Confirm the audio clock is running (it stays at 0 while iOS keeps audio locked).
+    var checks = 0;
+    function confirm() {
+      if (audio.armed) { return; }
+      if (ctx.currentTime > 0 && ctx.state !== 'suspended') {
+        audio.armed = true;
+        loadSoundFiles();
+        updateAudioLabel();
+      } else if (++checks < 4) {
+        setTimeout(confirm, 250 * checks);
+      }
+    }
+    setTimeout(confirm, 150);
+  }
+
+  function loadSoundFiles() {
+    if (audio.filesRequested) { return; }
+    audio.filesRequested = true;
+    var files = audio.cfg.sound_files || {};
+    for (var name in files) {
+      if (files.hasOwnProperty(name)) { loadSoundFile(name, files[name]); }
+    }
+  }
+  function loadSoundFile(name, file) {
+    var x = new XMLHttpRequest();
+    x.open('GET', '/sounds/' + encodeURIComponent(file), true);
+    x.responseType = 'arraybuffer';
+    x.onload = function () {
+      if (x.status !== 200) { return; }
+      try {
+        audio.ctx.decodeAudioData(x.response, function (buf) { audio.buffers[name] = buf; }, function () {});
+      } catch (e) {}
+    };
+    x.send();
+  }
+
+  // Caps pill 03-2187: AUDIO STANDBY / TOUCH TO ARM, AUDIO ONLINE, SILENT RUNNING.
+  function updateAudioLabel() {
+    if (!soundsOn() || !comms.enabled || audio.testing) { return; }
+    var small = $('cap-audio-s'), main = $('cap-audio-m');
+    small.style.display = '';
+    if (inQuietHours(new Date())) {
+      small.textContent = 'SILENT RUNNING';
+      main.textContent = '03-2187';
+    } else if (audio.armed) {
+      small.textContent = 'AUDIO ONLINE';
+      main.textContent = '03-2187';
+    } else {
+      small.textContent = 'AUDIO STANDBY';
+      main.textContent = 'TOUCH TO ARM';
+    }
+  }
+
+  // Long press on the audio pill plays each cue in turn.
+  function soundTest() {
+    if (audio.testing) { return; }
+    audio.testing = true;
+    var v = audio.cfg.sound_volume * (inQuietHours(new Date()) ? QUIET_VOLUME : 1), i = 0;
+    function next() {
+      if (i >= CUE_ORDER.length) {
+        audio.testing = false;
+        updateAudioLabel();
+        return;
+      }
+      $('cap-audio-s').textContent = 'SOUND TEST';
+      $('cap-audio-m').textContent = CUE_ORDER[i].toUpperCase();
+      play(CUE_ORDER[i], v);
+      i++;
+      setTimeout(next, TEST_STEP_MS);
+    }
+    next();
+  }
+
+  function enableSounds(cfg) {
+    audio.cfg = cfg;
+    if (!soundsOn()) { return; }
+    document.addEventListener('touchend', armAudio, true);
+    document.addEventListener('mousedown', armAudio, true);
+    document.addEventListener('click', armAudio, true);
+    var pill = $('cap-audio'), downAt = 0;
+    function down() { downAt = new Date().getTime(); }
+    function up() {
+      if (downAt && new Date().getTime() - downAt >= LONG_PRESS_MS) { soundTest(); }
+      downAt = 0;
+    }
+    pill.addEventListener('touchstart', down, false);
+    pill.addEventListener('touchend', up, false);
+    pill.addEventListener('mousedown', down, false);
+    pill.addEventListener('mouseup', up, false);
+    updateAudioLabel();
+  }
+
+  /* ----- incoming alerts: chime on arrival, repeat while unread, one chime when quiet hours end ----- */
+  var alerts = { known: {}, ready: false, lastAlert: 0, repeats: 0, wasQuiet: null };
+
+  function noteNewMessages(list) {
+    var fresh = false, acked = false;
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      if (alerts.known[m.id]) { continue; }
+      alerts.known[m.id] = true;
+      if (!alerts.ready) { continue; }   // first load: already there, no chime
+      if (m.dir === 'in' && m.kind === 'msg' && m.status === 'new') { fresh = true; }
+      if (m.dir === 'in' && m.kind === 'ack') { acked = true; }
+    }
+    if (!alerts.ready) { alerts.lastAlert = new Date().getTime(); }
+    alerts.ready = true;
+    if (fresh) {
+      cue('incoming');
+      alerts.lastAlert = new Date().getTime();
+      alerts.repeats = 0;
+    } else if (acked) {
+      cue('ack');
+    }
+  }
+
+  function checkAlerts() {
+    var now = new Date(), t = now.getTime();
+    var quiet = inQuietHours(now), unread = unreadList().length > 0;
+    var cfg = audio.cfg || {}, max = cfg.incoming_repeat_max || 0;
+    if (alerts.wasQuiet === true && !quiet && unread) {
+      cue('incoming');                       // e.g. 07:00: one chime for anything still unread
+      alerts.lastAlert = t;
+      alerts.repeats = max;
+    }
+    alerts.wasQuiet = quiet;
+    if (!unread) { alerts.repeats = 0; return; }
+    var every = (cfg.incoming_repeat_minutes || 0) * 60 * 1000;
+    if (every && !quiet && alerts.repeats < max && t - alerts.lastAlert >= every) {
+      cue('incoming');
+      alerts.lastAlert = t;
+      alerts.repeats++;
+    }
+  }
+
+  /* ==========================================================================
+     COMMS: family text messages (docs/text-messages-plan.md sections 4-5)
+     Screens: dash (0), log (1), detail (2), compose (3a-3d), result (3e).
+     Message text comes from outside the house: only ever set via textContent.
+     ========================================================================== */
+  var MESSAGES_URL = '/api/messages';
+  var MESSAGES_EVERY_MS = 15 * 1000;
+  var IDLE_RETURN_MS = 90 * 1000;
+  var SENT_HOLD_MS = 3000;
+  var PER_PAGE = 6;
+  var SPINE_COLORS = ['a', 'c', 'o', 'a'];
+  var SPINE_CODES = ['04-041969', '05-1701D', '06-071984', '07-2409'];
+  var MID = ' · ', ARROW = ' → ';
+
+  var comms = {
+    enabled: false,
+    cfg: null,
+    data: null,            // last GET /api/messages
+    online: true,
+    screen: 'dash',
+    logPage: 0,
+    detailId: null,
+    detailFrom: 'log',
+    c: null,               // compose state
+    r: null,               // result state
+    busy: false,
+    lastTouch: new Date().getTime(),
+    sentTimer: null,
+    dcTimer: null
+  };
+
+
+  function sendJSON(url, body, done) {
+    var x = new XMLHttpRequest();
+    var finished = false;
+    var timer = setTimeout(function () {
+      if (finished) { return; }
+      finished = true;
+      try { x.abort(); } catch (e) {}
+      done(0, null);
+    }, XHR_TIMEOUT_MS);
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4 || finished) { return; }
+      finished = true;
+      clearTimeout(timer);
+      var data = null;
+      try { data = JSON.parse(x.responseText); } catch (e) {}
+      done(x.status, data);
+    };
+    x.open('POST', url, true);
+    x.setRequestHeader('Content-Type', 'application/json');
+    x.setRequestHeader('X-LCARS-Kiosk', '1');
+    x.send(JSON.stringify(body || {}));
+  }
+
+  /* ----- message helpers ----- */
+  function allMessages() { return comms.data && comms.data.messages ? comms.data.messages : []; }
+  function findMsg(id) {
+    var list = allMessages();
+    for (var i = 0; i < list.length; i++) { if (list[i].id === id) { return list[i]; } }
+    return null;
+  }
+  function unreadList() {
+    var out = [], list = allMessages();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].dir === 'in' && list[i].status === 'new') { out.push(list[i]); }
+    }
+    return out;   // newest first (server order)
+  }
+  function msgTime(m) { return hhmm(new Date(m.ts * 1000)); }
+  function toLabel(to) { return to === 'ALL' ? 'ALL HANDS' : to; }
+  function firstLine(text) { return String(text || '').split('\n')[0]; }
+  function whoText(m) {
+    if (m.dir === 'in') { return m.from + (m.for ? ARROW + m.for : ''); }
+    return m.from + ARROW + m.to;
+  }
+  function statusText(m) {
+    if (m.dir === 'in') {
+      if (m.kind === 'ack') { return 'QUICK REPLY'; }
+      return m.status === 'new' ? '● NEW' : 'READ';
+    }
+    if (m.ack_by) { return '✓ ACK ' + m.ack_by; }
+    if (m.status === 'failed') { return 'FAILED'; }
+    if (m.status === 'transmitting') { return 'TRANSMITTING'; }
+    return 'SENT';
+  }
+  function statusClass(m) {
+    if (m.dir === 'in') { return m.kind === 'ack' ? 'st-ack' : (m.status === 'new' ? 'st-new' : ''); }
+    if (m.ack_by) { return 'st-ack'; }
+    return m.status === 'failed' ? 'st-fail' : '';
+  }
+  function commsSig() {
+    if (!comms.online) { return 'CHANNEL OFFLINE'; }
+    var n = unreadList().length;
+    return n ? n + ' UNREAD' : 'COMMS NOMINAL';
+  }
+  function pageCount(total) { return Math.max(1, Math.ceil(total / PER_PAGE)); }
+
+  /* ----- screen 0: dashboard additions ----- */
+  function updateDash() {
+    if (!comms.enabled) { return; }
+    var unread = unreadList(), n = unread.length;
+    var seg = $('sp-comms');
+    seg.textContent = n ? '05 INCOMING' : '05 COMMS';
+    seg.className = 'sp sp-5 sp-bottom tap' + (n ? ' alert' : '');
+    $('cap-sys').textContent = n ? n + ' UNREAD' : '2247 - SYS';
+    var strip = $('incoming');
+    if (n) {
+      var m = unread[0];
+      $('in-sig').textContent = n > 1 ? n + ' UNREAD' : 'PRIORITY';
+      var sub = $('in-sub');
+      clear(sub);
+      sub.appendChild(document.createTextNode('SUBSPACE MESSAGE FROM ' + m.from + MID + msgTime(m)));
+      if (m.for) {
+        sub.appendChild(document.createTextNode(MID));
+        sub.appendChild(el('b', null, 'FOR ' + m.for));
+      }
+      $('in-text').textContent = firstLine(m.text);
+      strip.style.display = '';
+      $('stoic').style.display = 'none';
+    } else {
+      strip.style.display = 'none';
+      $('stoic').style.display = '';
+    }
+    if (comms.screen === 'dash') { fitQuote(); }
+  }
+
+  /* ----- screen switching ----- */
+  function show(screen) {
+    if (comms.screen === 'result' && screen !== 'result') {
+      clearTimeout(comms.sentTimer);
+      comms.r = null;
+    }
+    if (screen !== 'compose') { comms.c = screen === 'result' ? comms.c : null; }
+    comms.screen = screen;
+    var dash = screen === 'dash';
+    $('dash-body').style.display = dash ? '' : 'none';
+    $('sp-dash').style.display = dash ? '' : 'none';
+    $('comms').style.display = dash ? 'none' : '';
+    $('sp-cm').style.display = dash ? 'none' : '';
+    if (dash) {
+      stopDataCascade();
+      updateDash();
+      fitQuote();
+    } else {
+      render();
+    }
+  }
+  function goDash() { show('dash'); }
+  function goLog() { comms.logPage = 0; show('log'); }
+
+  function render() {
+    stopDataCascade();
+    if (comms.screen === 'log') { renderLog(); }
+    else if (comms.screen === 'detail') { renderDetail(); }
+    else if (comms.screen === 'compose') { renderCompose(); }
+    else if (comms.screen === 'result') { renderResult(); }
+  }
+
+  function tapper(fn) {
+    return function (e) {
+      if (e && e.stopPropagation) { e.stopPropagation(); }
+      var before = audio.seq;
+      fn();
+      if (audio.seq === before) { cue('tap'); }   // actions with their own cue skip the beep
+    };
+  }
+
+  // Lower spine for comms screens: always four segments, so the spine stays continuous.
+  // buttons[i] = {t: label, fn: handler} (fn null = dimmed), or null = decorative code.
+  function spine(buttons) {
+    var box = $('sp-cm');
+    clear(box);
+    for (var i = 0; i < 4; i++) {
+      var b = buttons[i];
+      var seg = el('div', 'sp sp-bottom spb ' + SPINE_COLORS[i]);
+      if (b && b.fn) {
+        seg.textContent = b.t;
+        seg.className += ' tap';
+        seg.onclick = tapper(b.fn);
+      } else if (b) {
+        seg.textContent = b.t;
+        seg.className += ' off';
+      } else {
+        seg.textContent = SPINE_CODES[i];
+        seg.className += ' code';
+      }
+      box.appendChild(seg);
+    }
+  }
+  function pageButtons(page, total, set) {
+    if (total <= PER_PAGE) { return [null, null]; }
+    var pages = pageCount(total);
+    return [
+      { t: '▲ PAGE', fn: page > 0 ? function () { set(page - 1); } : null },
+      { t: '▼ PAGE', fn: page < pages - 1 ? function () { set(page + 1); } : null }
+    ];
+  }
+  function pageSig(page, total, fallback) {
+    return total > PER_PAGE ? 'PAGE ' + (page + 1) + '/' + pageCount(total) : fallback;
+  }
+
+  // Clears the comms bay, adds an LCARS heading, returns the main area.
+  function bay(title, sig, lost) {
+    var box = $('comms');
+    clear(box);
+    var hd = el('div', 'hd hd-cm');
+    hd.appendChild(el('h2', null, title));
+    hd.appendChild(el('div', 'run'));
+    hd.appendChild(el('span', lost ? 'sig lost' : 'sig', sig));
+    box.appendChild(hd);
+    var main = el('div', 'cm-main');
+    box.appendChild(main);
+    return main;
+  }
+
+  // Choice panels, PER_PAGE at a time. items: [{t: label, fn: handler}]
+  function panels(parent, items, page) {
+    var row = el('div', 'opts');
+    for (var i = page * PER_PAGE; i < items.length && i < (page + 1) * PER_PAGE; i++) {
+      var p = el('div', 'opt tap ' + SPINE_COLORS[(i + 1) % 4], items[i].t);
+      p.onclick = tapper(items[i].fn);
+      row.appendChild(p);
+    }
+    parent.appendChild(row);
+    return row;
+  }
+
+  // Shrink text until it fits its box (same idea as fitQuote).
+  function fitText(node, maxRem, minRem) {
+    var size = maxRem;
+    node.style.fontSize = size + 'rem';
+    while (node.scrollHeight > node.clientHeight + 1 && size > minRem) {
+      size -= 0.125;
+      node.style.fontSize = size + 'rem';
+    }
+  }
+
+  /* ----- screen 1: Communications Log ----- */
+  function renderLog() {
+    var msgs = allMessages();
+    var pages = pageCount(msgs.length);
+    if (comms.logPage > pages - 1) { comms.logPage = pages - 1; }
+    var page = comms.logPage;
+    var main = bay('Communications Log', commsSig(), !comms.online);
+    if (!msgs.length) {
+      main.appendChild(el('div', 'cm-msg', 'NO TRANSMISSIONS IN 24 HOURS'));
+    }
+    for (var i = page * PER_PAGE; i < msgs.length && i < (page + 1) * PER_PAGE; i++) {
+      main.appendChild(logRow(msgs[i]));
+    }
+    spine([{ t: 'RETURN', fn: goDash },
+           { t: 'OPEN CHANNEL', fn: function () { startCompose({ origin: 'log' }); } }]
+      .concat(pageButtons(page, msgs.length, function (p) { comms.logPage = p; render(); })));
+  }
+
+  function logRow(m) {
+    var row = el('div', 'lg-row tap ' + (m.dir === 'in' ? 'lg-in' : 'lg-out'));
+    row.appendChild(el('div', 'lg-tab'));
+    row.appendChild(el('div', 'lg-arr'));
+    row.appendChild(el('div', 'lg-who', whoText(m)));
+    row.appendChild(el('div', 'lg-time', msgTime(m)));
+    row.appendChild(el('div', 'lg-txt', firstLine(m.text)));
+    row.appendChild(el('div', 'lg-st ' + statusClass(m), statusText(m)));
+    row.onclick = tapper(function () { openDetail(m.id, 'log'); });
+    return row;
+  }
+
+  /* ----- screen 2: Transmission detail ----- */
+  function openDetail(id, from) {
+    var m = findMsg(id);
+    if (!m) { return; }
+    comms.detailId = id;
+    comms.detailFrom = from || 'log';
+    if (m.dir === 'in' && m.status === 'new') {
+      m.status = 'read';   // optimistic; the next poll confirms
+      sendJSON(MESSAGES_URL + '/' + m.id + '/read', {}, function () {});
+      updateDash();
+    }
+    show('detail');
+  }
+
+  function detailReturn() {
+    if (comms.detailFrom === 'dash') { goDash(); } else { show('log'); }
+  }
+
+  function renderDetail() {
+    var m = findMsg(comms.detailId);
+    if (!m) { show('log'); return; }   // pruned after 24 hours
+    var title, sig, buttons = [{ t: 'RETURN', fn: detailReturn }];
+    if (m.dir === 'in') {
+      title = 'Transmission' + MID + 'From ' + m.from + (m.for ? MID + 'For ' + m.for : '');
+      sig = msgTime(m) + MID + 'RECEIVED';
+      if (m.kind === 'msg') {
+        buttons.push({ t: 'ACKNOWLEDGE', fn: function () { acknowledge(m); } });
+      }
+      buttons.push({ t: 'REPLY', fn: function () { startCompose({ origin: 'detail', to: m.from }); } });
+    } else {
+      title = 'Transmission' + MID + m.from + ARROW + toLabel(m.to);
+      sig = msgTime(m) + MID + (m.status === 'failed' ? 'FAILED' : m.status === 'transmitting' ? 'TRANSMITTING' : 'SENT');
+      if (m.status === 'failed') {
+        buttons.push({ t: 'RETRANSMIT', fn: function () {
+          transmit({ retry: m.id }, { from: m.from, to: m.to, text: m.text });
+        } });
+      }
+    }
+    var main = bay(title, sig, false);
+    if (m.dir === 'out' && m.ack_by) {
+      main.appendChild(el('div', 'cm-meta', 'ACKNOWLEDGED BY ' + m.ack_by));
+    } else if (m.dir === 'out' && m.status === 'failed') {
+      main.appendChild(el('div', 'cm-meta fail', 'TRANSMISSION FAILED' + MID + 'SUBSPACE INTERFERENCE'));
+    } else if (m.kind === 'ack') {
+      main.appendChild(el('div', 'cm-meta', 'QUICK REPLY' + (m.for ? ' TO ' + m.for : '')));
+    }
+    if (m.partial) {
+      main.appendChild(el('div', 'cm-meta', 'NOT EVERY CONTACT WAS REACHED'));
+    }
+    var text = el('div', 'cm-text', '“' + m.text + '”');
+    main.appendChild(text);
+    fitText(text, 2.25, 1);
+    spine(buttons);
+  }
+
+  function acknowledge(m) {
+    var crew = comms.cfg.crew;
+    var sender = m.for || (crew.length === 1 ? crew[0] : null);
+    if (sender) {
+      transmit({ ack: m.id, from_crew: sender }, { from: sender, to: m.from, text: 'GOT IT' });
+    } else {
+      startCompose({ origin: 'detail', mode: 'ack', ack: m });
+    }
+  }
+
+  /* ----- screen 3: Open channel (who -> what -> to whom -> confirm) ----- */
+  function startCompose(o) {
+    var crew = comms.cfg.crew;
+    comms.c = {
+      mode: o.mode || 'send',
+      origin: o.origin || 'dash',
+      ack: o.ack || null,
+      from: crew.length === 1 ? crew[0] : null,
+      preset: null,
+      to: o.to || null,
+      toLocked: !!o.to,
+      step: null,
+      history: [],
+      page: 0
+    };
+    cue('open');
+    goStep(nextStep());
+  }
+
+  function nextStep() {
+    var c = comms.c;
+    if (!c.from) { return 'who'; }
+    if (c.mode === 'ack') { return 'send'; }
+    if (c.preset === null) { return 'what'; }
+    if (!c.to) { return 'whom'; }
+    return 'confirm';
+  }
+
+  function goStep(step) {
+    var c = comms.c;
+    if (step === 'send') { transmitCompose(); return; }
+    if (c.step) { c.history.push({ step: c.step, from: c.from, preset: c.preset, to: c.to }); }
+    c.step = step;
+    c.page = 0;
+    show('compose');
+  }
+
+  function stepBack() {
+    var c = comms.c, prev = c.history.pop();
+    if (!prev) { abortCompose(); return; }
+    c.step = prev.step;
+    c.from = prev.from;
+    c.preset = prev.preset;
+    c.to = prev.to;
+    c.page = 0;
+    render();
+  }
+
+  function abortCompose() {
+    var origin = comms.c ? comms.c.origin : 'dash';
+    comms.c = null;
+    if (origin === 'log') { show('log'); }
+    else if (origin === 'detail' && findMsg(comms.detailId)) { show('detail'); }
+    else { goDash(); }
+  }
+
+  function renderCompose() {
+    var c = comms.c;
+    if (!c) { goDash(); return; }
+    var cfg = comms.cfg, items = [], i, main, title, sig;
+
+    if (c.step === 'who') {
+      for (i = 0; i < cfg.crew.length; i++) {
+        items.push({ t: cfg.crew[i], fn: (function (name) {
+          return function () { c.from = name; goStep(nextStep()); };
+        })(cfg.crew[i]) });
+      }
+      title = 'Who Is Transmitting?';
+      sig = pageSig(c.page, items.length, c.mode === 'ack' ? 'ACKNOWLEDGE' : 'OPEN CHANNEL');
+    } else if (c.step === 'what') {
+      for (i = 0; i < cfg.message_presets.length; i++) {
+        items.push({ t: cfg.message_presets[i].text, fn: (function (idx) {
+          return function () {
+            c.preset = idx;
+            if (!c.toLocked) { c.to = cfg.message_presets[idx].to || null; }
+            goStep(nextStep());
+          };
+        })(i) });
+      }
+      title = c.from + MID + 'Channel Open';
+      sig = pageSig(c.page, items.length, c.toLocked ? 'TO ' + toLabel(c.to) : 'SELECT MESSAGE');
+    } else if (c.step === 'whom') {
+      var names = cfg.contacts.concat(['ALL']);
+      for (i = 0; i < names.length; i++) {
+        items.push({ t: toLabel(names[i]), fn: (function (name) {
+          return function () { c.to = name; goStep('confirm'); };
+        })(names[i]) });
+      }
+      title = 'Hail Whom?';
+      sig = pageSig(c.page, items.length, 'SELECT CHANNEL');
+    } else {   // confirm
+      main = bay('Open Channel', 'CONFIRM', false);
+      main.appendChild(el('div', 'cf-route', c.from + ARROW + toLabel(c.to)));
+      var text = el('div', 'cf-text', '“' + cfg.message_presets[c.preset].text + '”');
+      main.appendChild(text);
+      panels(main, [{ t: 'TRANSMIT', fn: transmitCompose },
+                    { t: 'CHANGE', fn: function () { goStep('whom'); } }], 0);
+      spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }, null, null]);
+      return;
+    }
+    main = bay(title, sig, false);
+    panels(main, items, c.page);
+    spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }]
+      .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); })));
+  }
+
+  function transmitCompose() {
+    var c = comms.c;
+    if (c.mode === 'ack') {
+      transmit({ ack: c.ack.id, from_crew: c.from }, { from: c.from, to: c.ack.from, text: 'GOT IT' });
+      return;
+    }
+    var preset = comms.cfg.message_presets[c.preset];
+    transmit({ from_crew: c.from, preset_id: preset.id, to: c.to },
+             { from: c.from, to: c.to, text: preset.text });
+  }
+
+  /* ----- 3e: result ----- */
+  function transmit(body, summary) {
+    if (comms.busy) { return; }
+    comms.busy = true;
+    comms.r = { phase: 'sending', body: body, summary: summary, msg: null, reason: '' };
+    cue('transmit');
+    show('result');
+    sendJSON(MESSAGES_URL, body, function (status, data) {
+      comms.busy = false;
+      var r = comms.r;
+      if (!r) { loadMessages(); return; }
+      r.msg = data && data.message ? data.message : null;
+      if (status === 200) {
+        r.phase = 'sent';
+        r.time = hhmm(new Date());
+        cue('sent');
+        comms.sentTimer = setTimeout(goLog, SENT_HOLD_MS);
+      } else {
+        r.phase = 'failed';
+        r.reason = status === 429 ? 'TRANSMISSION LIMIT REACHED' : 'SUBSPACE INTERFERENCE';
+        cue('fail');
+      }
+      if (comms.screen === 'result') { render(); }
+      loadMessages();
+    });
+  }
+
+  function retransmit() {
+    var r = comms.r;
+    if (r.msg && r.msg.id && r.msg.status === 'failed') {
+      transmit({ retry: r.msg.id }, r.summary);
+    } else {
+      transmit(r.body, r.summary);
+    }
+  }
+
+  function stopDataCascade() {
+    if (comms.dcTimer) { clearInterval(comms.dcTimer); comms.dcTimer = null; }
+  }
+
+  function renderResult() {
+    var r = comms.r;
+    if (!r) { goLog(); return; }
+    var route = r.summary.from + ARROW + toLabel(r.summary.to) + MID + '“' + r.summary.text + '”';
+    var main;
+    if (r.phase === 'sending') {
+      main = bay('Open Channel', 'TRANSMITTING', false);
+      main.appendChild(el('div', 'rs-big', 'TRANSMITTING…'));
+      main.appendChild(el('div', 'rs-sub', route));
+      var dc = el('div', 'rs-dc');
+      for (var k = 0; k < 3; k++) { dc.appendChild(el('div', null, rnd(24))); }
+      main.appendChild(dc);
+      comms.dcTimer = setInterval(function () {
+        var rows = dc.childNodes;
+        rows[Math.floor(Math.random() * rows.length)].textContent = rnd(24);
+      }, 120);
+      spine([null, null, null, null]);
+    } else if (r.phase === 'sent') {
+      main = bay('Open Channel', 'COMMS NOMINAL', false);
+      main.appendChild(el('div', 'rs-big', 'TRANSMISSION SENT' + MID + r.time));
+      main.appendChild(el('div', 'rs-sub', route));
+      spine([{ t: 'RETURN', fn: goLog }, null, null, null]);
+    } else {
+      main = bay('Open Channel', 'CHANNEL FAULT', true);
+      main.appendChild(el('div', 'rs-big fail', 'TRANSMISSION FAILED'));
+      main.appendChild(el('div', 'rs-sub', r.reason));
+      main.appendChild(el('div', 'rs-sub', route));
+      panels(main, [{ t: 'RETRANSMIT', fn: retransmit }, { t: 'ABORT', fn: goLog }], 0);
+      spine([{ t: 'RETURN', fn: goLog }, null, null, null]);
+    }
+  }
+
+  /* ----- polling, idle return, start-up ----- */
+  function loadMessages() {
+    getJSON(MESSAGES_URL, function (d) {
+      if (!d || !d.messages) { comms.online = false; refreshComms(); return; }
+      comms.data = d;
+      comms.online = d.channel !== 'offline';
+      noteNewMessages(d.messages);
+      refreshComms();
+    }, function () {
+      comms.online = false;   // keep the last list on screen
+      refreshComms();
+    });
+  }
+
+  // New messages never interrupt a compose in progress; they only update the badge.
+  function refreshComms() {
+    updateDash();
+    if (comms.screen === 'log' || comms.screen === 'detail') { render(); }
+  }
+
+  function noteTouch() { comms.lastTouch = new Date().getTime(); }
+
+  function checkIdle() {
+    if (comms.screen === 'dash' || comms.busy) { return; }
+    if (new Date().getTime() - comms.lastTouch > IDLE_RETURN_MS) { goDash(); }
+  }
+
+  function housekeeping() {
+    checkIdle();
+    if (comms.data) { checkAlerts(); }
+    updateAudioLabel();
+  }
+
+  function enableComms(cfg) {
+    comms.enabled = true;
+    comms.cfg = cfg;
+    var hail = $('sp-hail'), seg = $('sp-comms');
+    hail.textContent = '04 HAIL';
+    hail.className = 'sp sp-4 sp-bottom tap';
+    hail.onclick = tapper(function () { startCompose({ origin: 'dash' }); });
+    seg.textContent = '05 COMMS';
+    seg.className = 'sp sp-5 sp-bottom tap';
+    seg.onclick = tapper(function () { cue('open'); goLog(); });
+    $('incoming').onclick = tapper(function () {
+      var unread = unreadList();
+      if (unread.length) { openDetail(unread[0].id, 'dash'); }
+    });
+    document.addEventListener('touchstart', noteTouch, false);
+    document.addEventListener('mousedown', noteTouch, false);
+    setInterval(housekeeping, 5000);
+    enableSounds(cfg);
+    loadMessages();
+    setInterval(loadMessages, MESSAGES_EVERY_MS);
+  }
+
+  /* ---------- display settings from config.json via server.py ---------- */
   function loadConfig() {
     getJSON('/api/config', function (c) {
       if (c && c.location_name) { $('wx-loc').textContent = c.location_name; }
-    }, function () {});
+      if (c && c.messaging_enabled && c.crew && c.crew.length && !comms.enabled) { enableComms(c); }
+    }, function () {
+      setTimeout(loadConfig, 60 * 1000);   // server not up yet: try again
+    });
   }
 
   /* ---------- boot ---------- */

@@ -13,3 +13,12 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Text messages: message log and the setup wizard's backup (both private)
+messages.json
+messages.json.tmp
+config.json.bak
+
+# Optional user-supplied sound files (only the README is tracked)
+sounds/*
+!sounds/README.md
