@@ -1,0 +1,10 @@
+{
+  "ics_feed_url": "https://example.com/path/to/your/calendar.ics",
+  "latitude": 37.7749,
+  "longitude": -122.4194,
+  "location_name": "San Francisco, CA",
+  "port": 8000,
+  "max_events": 5,
+  "lookahead_days": 60,
+  "timed_default_minutes": 60
+}
