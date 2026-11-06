@@ -283,6 +283,11 @@ TIMED_DEFAULT_MINUTES = CONFIG["timed_default_minutes"]
 WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 
 # Files the static handler must never serve (config holds the private feed URL).
+# Optional user sound files: only the ones mapped in sound_files, only from this folder.
+SOUNDS_DIR = os.path.join(BASE_DIR, "sounds")
+SOUND_TYPES = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav"}
+MAX_SOUND_BYTES = 2 * 1024 * 1024
+
 STATIC_EXTENSIONS = (".html", ".css", ".js", ".woff", ".woff2", ".ttf",
                      ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp")
 
@@ -1235,6 +1240,9 @@ class LCARSHandler(SimpleHTTPRequestHandler):
             else:
                 self.send_json(200, MESSAGING.snapshot())
 
+        elif path.startswith("/sounds/"):
+            self.send_sound(urllib.parse.unquote(path[len("/sounds/"):]))
+
         elif path == "/" or path.lower().endswith(STATIC_EXTENSIONS):
             name = os.path.basename(urllib.parse.unquote(path))
             if name.startswith("."):
@@ -1313,6 +1321,31 @@ class LCARSHandler(SimpleHTTPRequestHandler):
             status, payload = MESSAGING.send_from_kiosk(body)
         self.send_json(status, payload)
 
+    def send_sound(self, name):
+        """Serve one sound file named in sound_files. Anything else is a 404."""
+        cfg = MESSAGING.cfg if MESSAGING else CONFIG
+        ext = os.path.splitext(name)[1].lower()
+        if (name not in cfg["sound_files"].values() or ext not in SOUND_TYPES
+                or name != os.path.basename(name) or "\\" in name or name.startswith(".")):
+            self.send_error(404)
+            return
+        full = os.path.join(SOUNDS_DIR, name)
+        if os.path.dirname(os.path.realpath(full)) != os.path.realpath(SOUNDS_DIR) or not os.path.isfile(full):
+            self.send_error(404)
+            return
+        if os.path.getsize(full) > MAX_SOUND_BYTES:
+            print("Sound file %s is over %d KB; not served." % (name, MAX_SOUND_BYTES // 1024))
+            self.send_error(404)
+            return
+        with open(full, "rb") as fh:
+            data = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", SOUND_TYPES[ext])
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=86400")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_OPTIONS(self):
         # Never answer CORS preflights: no Access-Control-* headers, ever.
         self.send_error(405)
@@ -1327,6 +1360,9 @@ def make_server(port, directory=BASE_DIR):
 
 if __name__ == "__main__":
     MESSAGING = build_messaging(CONFIG)
+    for cue, name in sorted(CONFIG["sound_files"].items()):
+        if not os.path.isfile(os.path.join(SOUNDS_DIR, name)):
+            print("Sound file for %r not found: sounds/%s (the built-in tone is used)." % (cue, name))
     if MESSAGING is not None:
         print("Messaging: telegram, %d contact(s), %d crew. Listening for transmissions..."
               % (len(MESSAGING.contacts), len(MESSAGING.crew)))

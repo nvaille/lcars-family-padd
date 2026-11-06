@@ -497,5 +497,63 @@ class HTTPTests(Base):
         self.assertEqual(self.request("GET", "/")[0], 200)
 
 
+class SoundFileTests(unittest.TestCase):
+    """Only files mapped in sound_files, only from sounds/, only audio types."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="lcars-sounds-")
+        self.sounds = os.path.join(self.dir, "sounds")
+        os.mkdir(self.sounds)
+        for name, data in (("hail.mp3", b"ID3fake"), ("beep.wav", b"RIFFfake"), ("other.mp3", b"x"),
+                           ("big.m4a", b"0" * (server.MAX_SOUND_BYTES + 1))):
+            with open(os.path.join(self.sounds, name), "wb") as fh:
+                fh.write(data)
+        with open(os.path.join(self.dir, "secret.mp3"), "wb") as fh:
+            fh.write(b"outside")
+        self.patches = [(server, "SOUNDS_DIR", server.SOUNDS_DIR),
+                        (server.CONFIG, "sound_files", server.CONFIG["sound_files"]),
+                        (server.LCARSHandler, "log_message", server.LCARSHandler.log_message)]
+        server.SOUNDS_DIR = self.sounds
+        server.CONFIG["sound_files"] = {"incoming": "hail.mp3", "tap": "beep.wav", "ack": "big.m4a",
+                                        "fail": "../secret.mp3", "sent": "missing.mp3"}
+        server.LCARSHandler.log_message = lambda *args: None
+        server.MESSAGING = None
+        self.httpd = server.make_server(0)
+        self.port = self.httpd.server_address[1]
+        t = threading.Thread(target=self.httpd.serve_forever)
+        t.daemon = True
+        t.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        for obj, key, value in self.patches:
+            if isinstance(obj, dict):
+                obj[key] = value
+            else:
+                setattr(obj, key, value)
+
+    def get(self, path):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        return resp.status, resp.getheader("Content-Type"), body
+
+    def test_mapped_files_are_served_with_audio_types(self):
+        self.assertEqual(self.get("/sounds/hail.mp3"), (200, "audio/mpeg", b"ID3fake"))
+        self.assertEqual(self.get("/sounds/beep.wav")[:2], (200, "audio/wav"))
+
+    def test_everything_else_is_404(self):
+        for path in ("/sounds/other.mp3",             # in the folder but not mapped
+                     "/sounds/big.m4a",               # mapped but too big
+                     "/sounds/missing.mp3",           # mapped but absent
+                     "/sounds/..%2Fsecret.mp3", "/sounds/../secret.mp3",
+                     "/secret.mp3", "/sounds/", "/sounds/README.md",
+                     "/sounds/..%2Fconfig.json", "/sounds/%2e%2e/server.py"):
+            self.assertEqual(self.get(path)[0], 404, path)
+
+
 if __name__ == "__main__":
     unittest.main()

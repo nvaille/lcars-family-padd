@@ -386,7 +386,7 @@ body {
         <div class="caps">
           <div class="capm c">01-57585</div>
           <div class="capm a">02-394</div>
-          <div class="capm a">03-2187</div>
+          <div class="capm a" id="cap-audio"><small id="cap-audio-s" style="display:none">&nbsp;</small><span id="cap-audio-m">03-2187</span></div>
           <div class="capm o"><small class="blink" id="cap-sys">2247 - SYS</small>04-47219</div>
         </div>
       </div>
@@ -927,6 +927,268 @@ body {
   }
 
   /* ==========================================================================
+     SOUNDS (plan section 8). Original synthesized tones by default; optional
+     user files from sounds/. iOS 9 only unlocks Web Audio from a touchend, so
+     audio is "armed" by the first touch after every page load.
+     Automatic cues (incoming, ack) are silent during quiet hours; cues a person
+     triggers play at 30% volume then.
+     ========================================================================== */
+  var CUE_ORDER = ['tap', 'open', 'transmit', 'sent', 'incoming', 'ack', 'fail'];
+  var AUTO_CUES = { incoming: true, ack: true };
+  var QUIET_VOLUME = 0.3;
+  var LONG_PRESS_MS = 700;
+  var TEST_STEP_MS = 1300;
+  var audio = { ctx: null, armed: false, buffers: {}, filesRequested: false, seq: 0, cfg: null, testing: false };
+
+  function startNode(node, when) { if (node.start) { node.start(when); } else { node.noteOn(when); } }
+  function stopNode(node, when) { if (node.stop) { node.stop(when); } else { node.noteOff(when); } }
+  function newGain(ctx) { return ctx.createGain ? ctx.createGain() : ctx.createGainNode(); }
+
+  function audioCtx() {
+    if (!audio.ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { return null; }
+      try { audio.ctx = new AC(); } catch (e) { return null; }
+    }
+    return audio.ctx;
+  }
+
+  // One shaped tone: quick attack, exponential decay. f2 = optional sweep target.
+  function tone(at, f1, f2, dur, peak, type) {
+    var ctx = audio.ctx, o = ctx.createOscillator(), g = newGain(ctx);
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f1, at);
+    if (f2) { o.frequency.exponentialRampToValueAtTime(f2, at + dur); }
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(Math.max(peak, 0.0002), at + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g);
+    g.connect(ctx.destination);
+    startNode(o, at);
+    stopNode(o, at + dur + 0.02);
+  }
+
+  function synth(name, v) {
+    var t = audio.ctx.currentTime + 0.02, s, i;
+    if (name === 'tap') {                       // short high blip
+      tone(t, 1200, 0, 0.04, v * 0.5, 'triangle');
+    } else if (name === 'incoming') {           // rising three-tone chirp, twice
+      for (i = 0; i < 2; i++) {
+        s = t + i * 0.55;
+        tone(s, 880, 0, 0.11, v, 'sine');
+        tone(s + 0.12, 1175, 0, 0.11, v, 'sine');
+        tone(s + 0.24, 1568, 0, 0.16, v, 'sine');
+      }
+    } else if (name === 'transmit') {           // quick upward sweep
+      tone(t, 420, 1680, 0.28, v * 0.7, 'triangle');
+    } else if (name === 'sent') {               // two-tone confirm, low -> high
+      tone(t, 660, 0, 0.12, v, 'sine');
+      tone(t + 0.13, 990, 0, 0.2, v, 'sine');
+    } else if (name === 'ack') {                // soft single chime
+      tone(t, 1320, 0, 0.5, v * 0.6, 'sine');
+    } else if (name === 'fail') {               // low double buzz
+      tone(t, 160, 0, 0.16, v * 0.4, 'square');
+      tone(t + 0.22, 150, 0, 0.2, v * 0.4, 'square');
+    } else if (name === 'open') {               // gentle two-note channel open
+      tone(t, 523, 0, 0.14, v * 0.8, 'sine');
+      tone(t + 0.15, 784, 0, 0.22, v * 0.8, 'sine');
+    }
+  }
+
+  function play(name, v) {
+    var ctx = audio.ctx;
+    if (!ctx || v <= 0) { return; }
+    try {
+      var buf = audio.buffers[name];
+      if (buf) {
+        var src = ctx.createBufferSource(), g = newGain(ctx);
+        src.buffer = buf;
+        g.gain.value = v;
+        src.connect(g);
+        g.connect(ctx.destination);
+        startNode(src, 0);
+      } else {
+        synth(name, v);
+      }
+    } catch (e) {}
+  }
+
+  function soundsOn() { return !!(audio.cfg && audio.cfg.sounds_enabled); }
+
+  function parseHM(text) {
+    var m = /^(\d\d):(\d\d)$/.exec(text || '');
+    return m ? +m[1] * 60 + +m[2] : null;
+  }
+  // Quiet hours like "22:00-07:00" (may cross midnight), on the kiosk's own clock.
+  function inQuietHours(d) {
+    var qh = audio.cfg && audio.cfg.quiet_hours;
+    if (!qh) { return false; }
+    var parts = qh.split('-'), a = parseHM(parts[0]), b = parseHM(parts[1]);
+    if (a === null || b === null || a === b) { return false; }
+    var now = d.getHours() * 60 + d.getMinutes();
+    return a < b ? (now >= a && now < b) : (now >= a || now < b);
+  }
+
+  // Every sound goes through here.
+  function cue(name) {
+    audio.seq++;
+    if (!soundsOn() || audio.testing) { return; }
+    if (name === 'tap' && !audio.cfg.tap_sounds) { return; }
+    var quiet = inQuietHours(new Date());
+    if (quiet && AUTO_CUES[name]) { return; }
+    play(name, audio.cfg.sound_volume * (quiet ? QUIET_VOLUME : 1));
+  }
+
+  // Runs (capture phase) on every touchend/mousedown/click until audio is confirmed running.
+  function armAudio() {
+    if (!soundsOn()) { return; }
+    var ctx = audioCtx();
+    if (!ctx) { return; }
+    if (audio.armed && ctx.state !== 'suspended' && ctx.state !== 'interrupted') { return; }
+    audio.armed = false;
+    try {
+      var src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);   // one silent sample
+      src.connect(ctx.destination);
+      startNode(src, 0);
+      if (ctx.resume) { ctx.resume(); }
+    } catch (e) { return; }
+    // Confirm the audio clock is running (it stays at 0 while iOS keeps audio locked).
+    var checks = 0;
+    function confirm() {
+      if (audio.armed) { return; }
+      if (ctx.currentTime > 0 && ctx.state !== 'suspended') {
+        audio.armed = true;
+        loadSoundFiles();
+        updateAudioLabel();
+      } else if (++checks < 4) {
+        setTimeout(confirm, 250 * checks);
+      }
+    }
+    setTimeout(confirm, 150);
+  }
+
+  function loadSoundFiles() {
+    if (audio.filesRequested) { return; }
+    audio.filesRequested = true;
+    var files = audio.cfg.sound_files || {};
+    for (var name in files) {
+      if (files.hasOwnProperty(name)) { loadSoundFile(name, files[name]); }
+    }
+  }
+  function loadSoundFile(name, file) {
+    var x = new XMLHttpRequest();
+    x.open('GET', '/sounds/' + encodeURIComponent(file), true);
+    x.responseType = 'arraybuffer';
+    x.onload = function () {
+      if (x.status !== 200) { return; }
+      try {
+        audio.ctx.decodeAudioData(x.response, function (buf) { audio.buffers[name] = buf; }, function () {});
+      } catch (e) {}
+    };
+    x.send();
+  }
+
+  // Caps pill 03-2187: AUDIO STANDBY / TOUCH TO ARM, AUDIO ONLINE, SILENT RUNNING.
+  function updateAudioLabel() {
+    if (!soundsOn() || !comms.enabled || audio.testing) { return; }
+    var small = $('cap-audio-s'), main = $('cap-audio-m');
+    small.style.display = '';
+    if (inQuietHours(new Date())) {
+      small.textContent = 'SILENT RUNNING';
+      main.textContent = '03-2187';
+    } else if (audio.armed) {
+      small.textContent = 'AUDIO ONLINE';
+      main.textContent = '03-2187';
+    } else {
+      small.textContent = 'AUDIO STANDBY';
+      main.textContent = 'TOUCH TO ARM';
+    }
+  }
+
+  // Long press on the audio pill plays each cue in turn.
+  function soundTest() {
+    if (audio.testing) { return; }
+    audio.testing = true;
+    var v = audio.cfg.sound_volume * (inQuietHours(new Date()) ? QUIET_VOLUME : 1), i = 0;
+    function next() {
+      if (i >= CUE_ORDER.length) {
+        audio.testing = false;
+        updateAudioLabel();
+        return;
+      }
+      $('cap-audio-s').textContent = 'SOUND TEST';
+      $('cap-audio-m').textContent = CUE_ORDER[i].toUpperCase();
+      play(CUE_ORDER[i], v);
+      i++;
+      setTimeout(next, TEST_STEP_MS);
+    }
+    next();
+  }
+
+  function enableSounds(cfg) {
+    audio.cfg = cfg;
+    if (!soundsOn()) { return; }
+    document.addEventListener('touchend', armAudio, true);
+    document.addEventListener('mousedown', armAudio, true);
+    document.addEventListener('click', armAudio, true);
+    var pill = $('cap-audio'), downAt = 0;
+    function down() { downAt = new Date().getTime(); }
+    function up() {
+      if (downAt && new Date().getTime() - downAt >= LONG_PRESS_MS) { soundTest(); }
+      downAt = 0;
+    }
+    pill.addEventListener('touchstart', down, false);
+    pill.addEventListener('touchend', up, false);
+    pill.addEventListener('mousedown', down, false);
+    pill.addEventListener('mouseup', up, false);
+    updateAudioLabel();
+  }
+
+  /* ----- incoming alerts: chime on arrival, repeat while unread, one chime when quiet hours end ----- */
+  var alerts = { known: {}, ready: false, lastAlert: 0, repeats: 0, wasQuiet: null };
+
+  function noteNewMessages(list) {
+    var fresh = false, acked = false;
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      if (alerts.known[m.id]) { continue; }
+      alerts.known[m.id] = true;
+      if (!alerts.ready) { continue; }   // first load: already there, no chime
+      if (m.dir === 'in' && m.kind === 'msg' && m.status === 'new') { fresh = true; }
+      if (m.dir === 'in' && m.kind === 'ack') { acked = true; }
+    }
+    if (!alerts.ready) { alerts.lastAlert = new Date().getTime(); }
+    alerts.ready = true;
+    if (fresh) {
+      cue('incoming');
+      alerts.lastAlert = new Date().getTime();
+      alerts.repeats = 0;
+    } else if (acked) {
+      cue('ack');
+    }
+  }
+
+  function checkAlerts() {
+    var now = new Date(), t = now.getTime();
+    var quiet = inQuietHours(now), unread = unreadList().length > 0;
+    var cfg = audio.cfg || {}, max = cfg.incoming_repeat_max || 0;
+    if (alerts.wasQuiet === true && !quiet && unread) {
+      cue('incoming');                       // e.g. 07:00: one chime for anything still unread
+      alerts.lastAlert = t;
+      alerts.repeats = max;
+    }
+    alerts.wasQuiet = quiet;
+    if (!unread) { alerts.repeats = 0; return; }
+    var every = (cfg.incoming_repeat_minutes || 0) * 60 * 1000;
+    if (every && !quiet && alerts.repeats < max && t - alerts.lastAlert >= every) {
+      cue('incoming');
+      alerts.lastAlert = t;
+      alerts.repeats++;
+    }
+  }
+
+  /* ==========================================================================
      COMMS: family text messages (docs/text-messages-plan.md sections 4-5)
      Screens: dash (0), log (1), detail (2), compose (3a-3d), result (3e).
      Message text comes from outside the house: only ever set via textContent.
@@ -957,7 +1219,6 @@ body {
     dcTimer: null
   };
 
-  function cue(name) { /* sound cues: phase 4 */ }
 
   function sendJSON(url, body, done) {
     var x = new XMLHttpRequest();
@@ -1089,8 +1350,9 @@ body {
   function tapper(fn) {
     return function (e) {
       if (e && e.stopPropagation) { e.stopPropagation(); }
-      cue('tap');
+      var before = audio.seq;
       fn();
+      if (audio.seq === before) { cue('tap'); }   // actions with their own cue skip the beep
     };
   }
 
@@ -1454,6 +1716,7 @@ body {
       if (!d || !d.messages) { comms.online = false; refreshComms(); return; }
       comms.data = d;
       comms.online = d.channel !== 'offline';
+      noteNewMessages(d.messages);
       refreshComms();
     }, function () {
       comms.online = false;   // keep the last list on screen
@@ -1474,6 +1737,12 @@ body {
     if (new Date().getTime() - comms.lastTouch > IDLE_RETURN_MS) { goDash(); }
   }
 
+  function housekeeping() {
+    checkIdle();
+    if (comms.data) { checkAlerts(); }
+    updateAudioLabel();
+  }
+
   function enableComms(cfg) {
     comms.enabled = true;
     comms.cfg = cfg;
@@ -1483,14 +1752,15 @@ body {
     hail.onclick = tapper(function () { startCompose({ origin: 'dash' }); });
     seg.textContent = '05 COMMS';
     seg.className = 'sp sp-5 sp-bottom tap';
-    seg.onclick = tapper(goLog);
+    seg.onclick = tapper(function () { cue('open'); goLog(); });
     $('incoming').onclick = tapper(function () {
       var unread = unreadList();
       if (unread.length) { openDetail(unread[0].id, 'dash'); }
     });
     document.addEventListener('touchstart', noteTouch, false);
     document.addEventListener('mousedown', noteTouch, false);
-    setInterval(checkIdle, 5000);
+    setInterval(housekeeping, 5000);
+    enableSounds(cfg);
     loadMessages();
     setInterval(loadMessages, MESSAGES_EVERY_MS);
   }

@@ -10,6 +10,7 @@ It's built to run on very old hardware (the reference kiosk is a 1st-gen iPad Mi
 - **Environmental Sensors**: current conditions, hourly strip and 5-day forecast from [Open-Meteo](https://open-meteo.com) (no API key needed)
 - **Mission Log**: upcoming events from an iCloud, Google, Outlook or any other `.ics` feed, with recurring-event support (RRULE, EXDATE, RECURRENCE-ID)
 - **Stoic Directive**: a quote that rotates hourly
+- **Family comms**: kids send preset messages ("I'M HOME FROM SCHOOL") to parents' phones over Telegram, and parents reply. Includes LCARS-style sound cues and quiet hours
 - Scales the 1024×748 design to any screen; auto-reloads nightly to keep old Safari stable
 
 ## Quick start
@@ -76,6 +77,16 @@ Kids can send preset messages ("I'M HOME FROM SCHOOL") from the PADD to parents'
 
 `python3 configure.py show` prints your settings with secrets masked.
 
+### Sounds and quiet hours
+
+The PADD plays short original tones when you tap buttons, open a channel, send a message, and when a message arrives. No audio files are needed.
+
+- **Arming the audio:** iPads only allow sound after the screen has been touched, and that has to happen again after every page reload (including the nightly 3 a.m. reload). Until then, the pill in the top-right reads **AUDIO STANDBY · TOUCH TO ARM**, and new messages are visual only. One tap anywhere arms it, and the pill switches to **AUDIO ONLINE**.
+- **Quiet hours:** the default is 22:00 to 07:00 (`quiet_hours`). During quiet hours the pill reads **SILENT RUNNING**, the new-message chime is off, and button sounds play at 30% volume. At the end of quiet hours, the chime plays once if anything is still unread.
+- **Repeats:** while a message is unread, the chime repeats every `incoming_repeat_minutes`, up to `incoming_repeat_max` times.
+- **Sound test:** press and hold the audio pill for about a second. It plays every cue in turn.
+- **Your own sounds:** see [`sounds/README.md`](sounds/README.md).
+
 ### Getting a calendar feed URL
 
 - **Apple iCloud**: Calendar app → right-click the calendar → *Share Calendar* → tick *Public Calendar* → copy the `webcal://` link.
@@ -84,9 +95,24 @@ Kids can send preset messages ("I'M HOME FROM SCHOOL") from the PADD to parents'
 
 Anyone who has one of these links can read the calendar, so treat it like a password.
 
+## iPad kiosk setup
+
+These steps are for a wall-mounted iPad (the reference kiosk is a 1st-gen iPad Mini on iOS 9):
+
+1. **Open the dashboard.** In Safari, go to `http://<server-ip>:8000`, then use **Share → Add to Home Screen** and open it from the new icon (full-screen).
+2. **Keep the screen on:** Settings → General → **Auto-Lock → Never**. This makes sure message alerts are always seen.
+3. **Make sounds audible.** The iPad's mute silences all web sounds.
+   - Settings → General → set **Use Side Switch to: Lock Rotation**.
+   - Make sure mute is off in Control Center (swipe up from the bottom).
+4. **Turn the volume up** with the side buttons.
+5. **Arm the audio:** tap the screen once after each reload. The audio pill should say AUDIO ONLINE. Press and hold it to hear the sound test.
+6. **Optional:** use Settings → General → Accessibility → **Guided Access** to lock the iPad to the dashboard.
+
+To load a new version of the dashboard, tap the **LCARS 2247** title. It reloads the page.
+
 ## Security notes
 
-The server only serves the dashboard and static assets (`.html`, `.css`, `.js`, fonts, images). Requests for `config.json`, `messages.json`, `server.py`, dotfiles and anything else return 404. `/api/config` exposes only display values (the location label, sound settings, and, when messaging is on, crew and contact *names* and presets). It never exposes the calendar URL, the bot token or chat IDs. The server has no authentication, so run it on your home network only.
+The server only serves the dashboard and static assets (`.html`, `.css`, `.js`, fonts, images), plus any sound files you list in `sound_files` (only from `sounds/`). Requests for `config.json`, `messages.json`, `server.py`, dotfiles and anything else return 404. `/api/config` exposes only display values (the location label, sound settings, and, when messaging is on, crew and contact *names* and presets). It never exposes the calendar URL, the bot token or chat IDs. The server has no authentication, so run it on your home network only.
 
 Text messages:
 
