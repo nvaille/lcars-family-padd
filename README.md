@@ -61,6 +61,21 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 
 `LCARS_CONFIG` can point to a config file somewhere else. Settings ending in `_JSON` take JSON text when set as environment variables.
 
+### Text messages (Telegram)
+
+Kids can send preset messages ("I'M HOME FROM SCHOOL") from the PADD to parents' phones, and parents can reply. Messages go through a free Telegram bot. Everyone who receives PADD messages needs the Telegram app.
+
+1. **Stop the PADD server**, if it's running (Ctrl+C in its window). Only one program at a time can read the bot's messages.
+2. **Run the wizard:** `python3 configure.py messaging`
+   - It shows how to create a bot with @BotFather, then asks for the token. The token is typed hidden and checked with Telegram.
+   - It pairs each contact. They open the bot's link and tap START, then you give them a display name (MOM, DAD…).
+   - Optionally, it links a family group for ALL HANDS: add the bot to the group and send `/padd` there.
+   - It asks for the crew (the kids' names) and saves everything to `config.json`. The previous version is kept as `config.json.bak`.
+   - Finally, it sends a test transmission and waits for someone to tap a reply button.
+3. **Start the server again:** `python3 server.py`
+
+`python3 configure.py show` prints your settings with secrets masked.
+
 ### Getting a calendar feed URL
 
 - **Apple iCloud**: Calendar app → right-click the calendar → *Share Calendar* → tick *Public Calendar* → copy the `webcal://` link.
