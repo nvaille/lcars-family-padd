@@ -199,6 +199,212 @@ class WizardTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.path))
 
 
+FEED = "https://calendar.example.com/private/abc123secret/basic.ics"
+GEO = json.dumps({"results": [
+    {"name": "Springfield", "admin1": "Missouri", "country": "United States", "country_code": "US",
+     "latitude": 37.21533, "longitude": -93.29824},
+    {"name": "Springfield", "admin1": "Illinois", "country": "United States", "country_code": "US",
+     "latitude": 39.80172, "longitude": -89.64371},
+]})
+
+
+def ics(days_ahead=(1, 2, 3)):
+    import datetime
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0"]
+    for i, d in enumerate(days_ahead):
+        day = (datetime.date.today() + datetime.timedelta(days=d)).strftime("%Y%m%d")
+        lines += ["BEGIN:VEVENT", "UID:e%d" % i, "DTSTART:%sT180000" % day, "SUMMARY:Event %d" % i, "END:VEVENT"]
+    return "\r\n".join(lines + ["END:VCALENDAR"])
+
+
+class SectionTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="lcars-sec-")
+        self.path = os.path.join(self.dir, "config.json")
+        self.sounds = os.path.join(self.dir, "sounds")
+        os.mkdir(self.sounds)
+        self.output = []
+        self.fetched = []
+
+    def run_section(self, name, answers, secrets=(), existing=None, responses=None, running=False):
+        if existing is not None:
+            with open(self.path, "w") as fh:
+                json.dump(existing, fh)
+        responses = responses or {}
+
+        def fetch(url):
+            self.fetched.append(url)
+            for prefix, reply in responses.items():
+                if url.startswith(prefix):
+                    if isinstance(reply, Exception):
+                        raise reply
+                    return reply
+            raise AssertionError("unexpected fetch: %s" % url)
+        self.ask = Script(answers)
+        code = configure.run_section(self.path, name, ask=self.ask, secret=Script(secrets),
+                                     out=self.output.append, fetch=fetch, sounds_dir=self.sounds,
+                                     check_server=lambda port: running)
+        self.assertEqual(self.ask.answers, [], "unused answers; output:\n" + "\n".join(self.output))
+        return code
+
+    def saved(self):
+        with open(self.path) as fh:
+            return json.load(fh)
+
+    def text(self):
+        return "\n".join(self.output)
+
+    # ----- location -----
+
+    def test_location_lookup_with_region(self):
+        existing = {"port": 8000, "crew": ["SAM"], "custom_key": "kept"}
+        answers = ["Springfield, IL", "1", "", ""]  # search, pick, keep suggested label, save
+        code = self.run_section("location", answers, existing=existing,
+                                responses={configure.GEOCODE_URL: GEO}, running=True)
+        self.assertEqual(code, 0, self.text())
+        self.assertIn("name=Springfield&", self.fetched[0])
+        self.assertNotIn("IL", self.fetched[0])  # the region filters results; it isn't sent
+        cfg = self.saved()
+        self.assertEqual((cfg["latitude"], cfg["longitude"]), (39.8017, -89.6437))
+        self.assertEqual(cfg["location_name"], "Springfield, Illinois")
+        self.assertEqual(cfg["custom_key"], "kept")
+        self.assertEqual(cfg["crew"], ["SAM"])
+        self.assertIn("Restart it", self.text())
+
+    def test_location_search_again_then_custom_label(self):
+        responses = {configure.GEOCODE_URL + "name=Nowhere": json.dumps({}),
+                     configure.GEOCODE_URL: GEO}
+        answers = ["Nowhere", "Springfield", "", "Springfield", "2", "Home", ""]
+        self.assertEqual(self.run_section("location", answers, responses=responses), 0, self.text())
+        self.assertIn("No places found", self.text())
+        self.assertEqual(self.saved()["location_name"], "Home")
+        self.assertEqual(self.saved()["latitude"], 39.8017)
+
+    def test_location_offline_manual_entry(self):
+        responses = {configure.GEOCODE_URL: OSError("network is unreachable")}
+        answers = ["Paris", "m", "48.8566", "999", "2.3522", "Paris", ""]
+        self.assertEqual(self.run_section("location", answers, responses=responses), 0, self.text())
+        self.assertIn("Couldn't look that up", self.text())
+        self.assertIn("Pick a number from", self.text())
+        cfg = self.saved()
+        self.assertEqual((cfg["latitude"], cfg["longitude"], cfg["location_name"]), (48.8566, 2.3522, "Paris"))
+
+    def test_enter_keeps_everything_and_writes_nothing(self):
+        existing = {"latitude": 1.5, "longitude": 2.5, "location_name": "Base"}
+        self.assertEqual(self.run_section("location", [""], existing=existing), 0)
+        self.assertIn("No changes", self.text())
+        self.assertFalse(os.path.exists(self.path + ".bak"))
+
+    # ----- calendar -----
+
+    def test_calendar_new_feed_checked_and_hidden(self):
+        existing = {"location_name": "Home"}
+        code = self.run_section("calendar", [""], secrets=[FEED], existing=existing,
+                                responses={FEED: ics()})
+        self.assertEqual(code, 0, self.text())
+        self.assertEqual(self.saved(), {"location_name": "Home", "ics_feed_url": FEED})
+        self.assertIn("found 3 upcoming events", self.text())
+        self.assertIn("Next: ", self.text())
+        self.assertNotIn("abc123secret", self.text())
+        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+
+    def test_calendar_counts_more_than_max_events(self):
+        self.run_section("calendar", [""], secrets=[FEED], responses={FEED: ics(range(1, 9))})
+        self.assertIn("found 8 upcoming events", self.text())
+
+    def test_calendar_webcal_and_bad_feeds(self):
+        webcal = "webcal://calendar.example.com/private/abc123secret/basic.ics"
+        responses = {"https://bad.example.com/": "<html>login</html>",
+                     "https://down.example.com/": OSError("timed out for https://down.example.com/x.ics"),
+                     FEED: ics()}
+        secrets = ["ftp://nope", "https://bad.example.com/x.ics", "https://down.example.com/x.ics", webcal]
+        # bad html: don't save anyway; download fails: don't save anyway; webcal works; save
+        answers = ["n", "n", ""]
+        self.assertEqual(self.run_section("calendar", answers, secrets=secrets, responses=responses), 0,
+                         self.text())
+        self.assertEqual(self.saved()["ics_feed_url"], webcal)
+        text = self.text()
+        self.assertIn("should start with https://", text)
+        self.assertIn("isn't a calendar", text)
+        self.assertIn("Couldn't download the feed: timed out for (feed address)", text)
+        self.assertNotIn("down.example.com", text)
+
+    def test_calendar_keep_and_check(self):
+        existing = {"ics_feed_url": FEED}
+        self.assertEqual(self.run_section("calendar", ["", ""], existing=existing,
+                                          responses={FEED: ics([1])}), 0)
+        self.assertIn("found 1 upcoming event in", self.text())
+        self.assertIn("No changes", self.text())
+
+    def test_calendar_remove(self):
+        existing = {"ics_feed_url": FEED}
+        self.assertEqual(self.run_section("calendar", ["n", "y", ""], secrets=[""], existing=existing), 0)
+        self.assertEqual(self.saved()["ics_feed_url"], "")
+
+    # ----- sounds -----
+
+    def test_sounds_defaults_write_nothing(self):
+        # sounds on, volume, taps, quiet hours, repeat minutes, repeat max
+        self.assertEqual(self.run_section("sounds", ["", "", "", "", "", ""], existing={}), 0, self.text())
+        self.assertIn("No changes", self.text())
+        self.assertIn("built-in tones", self.text())
+
+    def test_sounds_changes_and_file_mapping(self):
+        for name in ("hail.mp3", "beep.wav", "notes.txt", ".hidden.mp3"):
+            open(os.path.join(self.sounds, name), "w").close()
+        answers = ["", "150", "80", "n", "9pm", "21:30 - 6:45", "0",
+                   "y",           # choose files
+                   "2", "2",      # incoming -> hail.mp3 (files sorted: beep.wav, hail.mp3)
+                   "1", "1",      # tap -> beep.wav
+                   "1", "0",      # tap -> back to built-in
+                   "",            # done with cues
+                   ""]            # save
+        self.assertEqual(self.run_section("sounds", answers), 0, self.text())
+        cfg = self.saved()
+        self.assertEqual(cfg, {"sound_volume": 0.8, "tap_sounds": False, "quiet_hours": "21:30-06:45",
+                               "incoming_repeat_minutes": 0, "sound_files": {"incoming": "hail.mp3"}})
+        self.assertIn("Use 24-hour times", self.text())
+        self.assertNotIn("notes.txt", self.text())
+        server_cfg = dict(server.DEFAULTS)
+        server_cfg.update(cfg)
+        warnings = []
+        server.normalize_messaging(server_cfg, warn=warnings.append)
+        self.assertEqual(warnings, [])
+
+    def test_sounds_off_and_quiet_hours_off(self):
+        self.run_section("sounds", ["n", ""])
+        self.assertEqual(self.saved(), {"sounds_enabled": False})
+        self.output = []
+        self.run_section("sounds", ["y", "", "", "off", "", "", ""])
+        self.assertEqual(self.saved(), {"sounds_enabled": True, "quiet_hours": ""})
+
+    # ----- security -----
+
+    def test_security_allowlist_and_rate(self):
+        existing = {"kiosk_allowed_ips": ["192.168.1.9"]}
+        answers = ["a", "192.168.1.42", "a", "not-an-ip", "a", "192.168.1.42", "x",
+                   "r", "1", "r", "", "", "20", ""]
+        self.assertEqual(self.run_section("security", answers, existing=existing), 0, self.text())
+        self.assertEqual(self.saved(), {"kiosk_allowed_ips": ["192.168.1.42"], "send_rate_limit_per_hour": 20})
+        text = self.text()
+        self.assertIn("isn't an IP address", text)
+        self.assertIn("already on the list", text)
+        self.assertIn("letters in [brackets]", text)
+
+    def test_ctrl_c_saves_nothing(self):
+        def ask(prompt=""):
+            raise KeyboardInterrupt
+        code = configure.run_section(self.path, "security", ask=ask, out=self.output.append,
+                                     check_server=lambda port: False)
+        self.assertEqual(code, 1)
+        self.assertFalse(os.path.exists(self.path))
+        self.assertIn("Nothing saved", self.text())
+
+    def test_decline_save(self):
+        self.assertEqual(self.run_section("security", ["", "5", "n"], existing={"port": 8000}), 1)
+        self.assertEqual(self.saved(), {"port": 8000})
+
+
 class HelperTests(unittest.TestCase):
     def test_mask(self):
         self.assertEqual(configure.mask(GOOD_TOKEN), "…AAAA")

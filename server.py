@@ -562,7 +562,8 @@ def expand(start, tz, rule, window_end, exdates):
                 yield occ
 
 
-def collect_upcoming(ics_text):
+def collect_upcoming(ics_text, everything=False):
+    """Upcoming events for the kiosk (the first MAX_EVENTS, or all of them for the setup wizard)."""
     now = datetime.now()
     today = datetime.combine(now.date(), time.min)
     window_end = today + timedelta(days=LOOKAHEAD_DAYS)
@@ -631,7 +632,7 @@ def collect_upcoming(ics_text):
 
     out.sort(key=lambda e: (e[0], not e[1]))
     events = []
-    for occ, all_day, summary in out[:MAX_EVENTS]:
+    for occ, all_day, summary in (out if everything else out[:MAX_EVENTS]):
         # an all-day/multi-day event that began earlier is shown on today
         shown = max(occ, today) if all_day else occ
         events.append({

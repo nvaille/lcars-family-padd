@@ -2,24 +2,33 @@
 """
 LCARS Family PADD - setup wizard (terminal). Standard library only.
 
+  python3 configure.py location    weather location: look up a city, pick the right match
+  python3 configure.py calendar    calendar feed (.ics / webcal) address, checked before saving
   python3 configure.py messaging   set up Telegram messaging: bot token, pair contacts,
                                    optional family group, crew names, test transmission
+  python3 configure.py sounds      sound effects, volume, quiet hours, your own sound files
+  python3 configure.py security    which devices may use messaging, and the send rate limit
   python3 configure.py show        print the current settings with secrets masked
 
-Run it on the server machine, in its own terminal window, while the PADD server is
-stopped (only one program at a time can read a Telegram bot's updates).
-Settings are merged into config.json (a backup is written to config.json.bak first).
+In every question, pressing Enter keeps the value shown in [brackets].
+Run it on the server machine, in its own terminal window. For messaging, stop the PADD
+server first (only one program at a time can read a Telegram bot's updates).
+Only the settings you change are written to config.json (a backup goes to config.json.bak).
 """
 
 import contextlib
+import copy
 import getpass
 import io
+import ipaddress
 import json
 import os
 import re
 import shutil
 import socket
 import sys
+import urllib.parse
+import urllib.request
 import uuid
 
 with contextlib.redirect_stdout(io.StringIO()):  # the server prints config notes on import
@@ -29,10 +38,30 @@ NAME_RE = re.compile(r"^[A-Z0-9][A-Z0-9 .'-]{0,19}$")
 TOKEN_RE = re.compile(r"^\d{5,12}:[A-Za-z0-9_-]{30,50}$")
 RESERVED_NAMES = ("ALL", "ALL HANDS")
 TEST_TEXT = "LCARS PADD ONLINE"
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?"
+QUIET_RE = re.compile(r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$")
+SECTIONS = ("location", "calendar", "sounds", "security")
+CUE_HELP = {
+    "tap": "any button press",
+    "incoming": "a new message arrives",
+    "transmit": "a message is being sent",
+    "sent": "a message was delivered",
+    "ack": "someone replied to a message",
+    "fail": "a message could not be sent",
+    "open": "the comms screens open",
+}
+MISSING = object()
 
 
 class Abort(Exception):
     pass
+
+
+def http_get(url, timeout=15):
+    """Download a URL as text (the same User-Agent the server uses for calendar feeds)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="ignore")
 
 
 # ---------------------------------------------------------------------------
@@ -75,23 +104,63 @@ def mask(value):
     return "…" + value[-4:] if len(value) > 8 else "••••"
 
 
+def describe(key, value):
+    """A setting's value for printing, with secrets masked."""
+    if value is MISSING:
+        return "(removed)"
+    if key in ("telegram_bot_token", "ics_feed_url"):
+        return mask(value)
+    if key == "telegram_group_chat_id":
+        return "(set, hidden)" if value else "(not set)"
+    if key == "contacts":
+        contacts = value if isinstance(value, list) else []
+        return ", ".join("%s (paired)" % c.get("name") for c in contacts if isinstance(c, dict)) or "(none)"
+    if key == "crew":
+        return ", ".join(server._as_list(value or [], "crew")) or "(none)"
+    return json.dumps(value, ensure_ascii=False)
+
+
 def summary_lines(raw):
-    contacts = raw.get("contacts") or []
-    lines = [
-        "messaging_provider     %s" % (raw.get("messaging_provider") or "none"),
-        "telegram_bot_token     %s" % mask(raw.get("telegram_bot_token")),
-        "telegram_group_chat_id %s" % ("(set, hidden)" if raw.get("telegram_group_chat_id") else "(not set)"),
-        "contacts               %s" % (", ".join(
-            "%s (paired)" % c.get("name") for c in contacts if isinstance(c, dict)) or "(none)"),
-        "crew                   %s" % (", ".join(server._as_list(raw.get("crew") or [], "crew")) or "(none)"),
-    ]
-    for key in sorted(raw):
-        if key not in ("messaging_provider", "telegram_bot_token", "telegram_group_chat_id",
-                       "contacts", "crew", "ics_feed_url"):
-            lines.append("%-22s %s" % (key, json.dumps(raw[key])))
-    if "ics_feed_url" in raw:
-        lines.append("%-22s %s" % ("ics_feed_url", mask(raw["ics_feed_url"])))
+    first = ["messaging_provider", "telegram_bot_token", "telegram_group_chat_id", "contacts", "crew"]
+    lines = ["%-22s %s" % (key, describe(key, raw.get(key, ""))) for key in first]
+    lines[0] = "%-22s %s" % ("messaging_provider", raw.get("messaging_provider") or "none")
+    lines += ["%-22s %s" % (key, describe(key, raw[key])) for key in sorted(raw) if key not in first]
     return lines
+
+
+def changed_keys(before, after):
+    return sorted(k for k in set(before) | set(after) if before.get(k, MISSING) != after.get(k, MISSING))
+
+
+def save_changes(path, before, raw, prompts):
+    """Show what changed, ask, then write only those keys. True if saved."""
+    keys = changed_keys(before, raw)
+    if not keys:
+        prompts.out("\nNo changes, so %s was left as it was." % os.path.basename(path))
+        return False
+    prompts.out("\nChanges:")
+    for key in keys:
+        prompts.out("  %-24s %s" % (key, describe(key, raw.get(key, MISSING))))
+    if not prompts.yes("Save these changes to %s?" % os.path.basename(path)):
+        prompts.out("Nothing saved.")
+        return False
+    fresh = load_raw(path)  # re-read, so only the keys changed here are touched
+    for key in keys:
+        if key in raw:
+            fresh[key] = raw[key]
+        else:
+            fresh.pop(key, None)
+    save_raw(path, fresh)
+    prompts.out("Saved (previous version in %s.bak; file is readable only by you)." % os.path.basename(path))
+    return True
+
+
+def restart_hint(raw, check_server):
+    port = os.environ.get("LCARS_PORT") or raw.get("port") or server.DEFAULTS["port"]
+    if check_server(port):
+        return ("The PADD server is running. Restart it so it uses the new settings:\n"
+                "  press Ctrl+C in its window, then run  python3 server.py")
+    return "Start the PADD server when you're ready:  python3 server.py"
 
 
 def server_running(port):
@@ -110,21 +179,21 @@ def tls_hint(err):
 
 
 # ---------------------------------------------------------------------------
-# The messaging wizard
+# Prompts shared by every section
 # ---------------------------------------------------------------------------
 
-class Wizard(object):
-    def __init__(self, raw, ask=input, secret=getpass.getpass, out=print,
-                 make_transport=server.TelegramTransport):
-        self.raw = raw
+def _number(value, cast, fallback):
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+class Prompts(object):
+    def __init__(self, ask=input, secret=getpass.getpass, out=print):
         self.ask = ask
         self.secret = secret
         self.out = out
-        self.make_transport = make_transport
-        self.transport = None
-        self.bot_username = ""
-
-    # ----- prompts -----
 
     def yes(self, question, default=True):
         hint = "[Y/n]" if default else "[y/N]"
@@ -150,6 +219,357 @@ class Wizard(object):
                 self.out("  Use up to 20 letters, digits, spaces, dots, dashes or apostrophes.")
             else:
                 return name
+
+    def ask_text(self, prompt, current=""):
+        answer = self.ask("%s%s: " % (prompt, " [%s]" % current if current else "")).strip()
+        return answer or current
+
+    def ask_number(self, prompt, current, lo, hi, cast=int):
+        while True:
+            answer = self.ask("%s [%s]: " % (prompt, current)).strip()
+            if not answer:
+                return current
+            value = _number(answer, cast, None)
+            if value is None:
+                self.out("  Type a number.")
+            elif lo <= value <= hi:
+                return value
+            else:
+                self.out("  Pick a number from %s to %s." % (lo, hi))
+
+    def pick(self, prompt, count):
+        """Ask for a list number (1..count). Returns a 0-based index, or None for Enter."""
+        while True:
+            answer = self.ask(prompt).strip()
+            if not answer:
+                return None
+            if answer.isdigit() and 1 <= int(answer) <= count:
+                return int(answer) - 1
+            self.out("  Type a number from 1 to %d, or press Enter to cancel." % count)
+
+    def edit_list(self, title, items, show, actions):
+        """A menu loop over a list. actions: [(letter, "[A]dd", fn(items))]. Enter or D ends it."""
+        actions = list(actions)
+        menu = "  ".join(label for _, label, _ in actions) + "  [D]one: "
+        while True:
+            self.out("\n%s:" % title)
+            for i, item in enumerate(items):
+                self.out("  %d. %s" % (i + 1, show(item)))
+            if not items:
+                self.out("  (none)")
+            choice = self.ask(menu).strip().lower()
+            if choice in ("", "d", "done"):
+                return items
+            for letter, _, fn in actions:
+                if choice == letter:
+                    fn(items)
+                    break
+            else:
+                self.out("  Type one of the letters in [brackets].")
+
+    def pick_item(self, items, verb):
+        if not items:
+            self.out("  There's nothing to %s." % verb)
+            return None
+        return self.pick("  Number to %s (Enter to cancel): " % verb, len(items))
+
+
+# ---------------------------------------------------------------------------
+# Sections that don't need Telegram: location, calendar, sounds, security
+# ---------------------------------------------------------------------------
+
+class Setup(Prompts):
+    def __init__(self, raw, ask=input, secret=getpass.getpass, out=print, fetch=http_get,
+                 sounds_dir=server.SOUNDS_DIR):
+        Prompts.__init__(self, ask, secret, out)
+        self.raw = raw
+        self.fetch = fetch
+        self.sounds_dir = sounds_dir
+
+    def current(self, key):
+        return copy.deepcopy(self.raw[key] if key in self.raw else server.DEFAULTS[key])
+
+    def set(self, key, value):
+        """Write a setting only if it really changes, so untouched settings stay as they were."""
+        if value != self.current(key):
+            self.raw[key] = value
+
+    def env_note(self, keys):
+        names = [server.ENV_VARS[k] for k in keys if os.environ.get(server.ENV_VARS[k]) is not None]
+        if names:
+            self.out("Note: %s %s set in this computer's environment and override%s config.json."
+                     % (", ".join(names), "is" if len(names) == 1 else "are", "s" if len(names) == 1 else ""))
+
+    # ----- location -----
+
+    def section_location(self):
+        self.out("\n== Location (for the weather panel) ==")
+        self.env_note(("latitude", "longitude", "location_name"))
+        lat = _number(self.current("latitude"), float, 0.0)
+        lon = _number(self.current("longitude"), float, 0.0)
+        if lat or lon:
+            self.out("Now: %s (%.4f, %.4f)" % (self.current("location_name") or "(no label)", lat, lon))
+        else:
+            self.out("Not set yet.")
+        while True:
+            query = self.ask("City or town to look up (Enter keeps the current location, "
+                             "M to type coordinates): ").strip()
+            if not query:
+                return
+            if query.lower() == "m":
+                self._manual_location(lat, lon)
+                return
+            matches = self._geocode(query)
+            if matches is None:
+                continue
+            if not matches:
+                self.out("  No places found for %r. Check the spelling, or type just the city name." % query)
+                continue
+            for i, r in enumerate(matches):
+                self.out("  %d. %s  (%.4f, %.4f)" % (i + 1, place_label(r), r["latitude"], r["longitude"]))
+            idx = self.pick("Pick a number (Enter to search again): ", len(matches))
+            if idx is None:
+                continue
+            r = matches[idx]
+            label = self.ask_text("Label shown on the PADD", short_label(r))
+            self.set("latitude", round(float(r["latitude"]), 4))
+            self.set("longitude", round(float(r["longitude"]), 4))
+            self.set("location_name", label)
+            self.out("  Location: %s" % label)
+            return
+
+    def _geocode(self, query):
+        """Open-Meteo place search. 'Springfield, IL' searches Springfield and prefers IL matches."""
+        name, _, region = query.partition(",")
+        name, region = name.strip(), region.strip().lower()
+        if len(name) < 2:
+            self.out("  Type at least 2 letters.")
+            return None
+        url = GEOCODE_URL + urllib.parse.urlencode(
+            {"name": name, "count": 10, "language": "en", "format": "json"})
+        try:
+            data = json.loads(self.fetch(url))
+        except Exception as e:
+            self.out("  Couldn't look that up: %s%s\n  (Type M to enter coordinates by hand instead.)"
+                     % (e, tls_hint(e)))
+            return None
+        results = [r for r in (data.get("results") or []) if isinstance(r, dict)
+                   and isinstance(r.get("latitude"), (int, float)) and isinstance(r.get("longitude"), (int, float))]
+        if region:
+            preferred = [r for r in results if any(str(r.get(f) or "").lower().startswith(region)
+                                                   for f in ("admin1", "country", "country_code"))]
+            results = preferred or results
+        return results[:8]
+
+    def _manual_location(self, lat, lon):
+        self.out("Tip: find coordinates by right-clicking a spot in Google Maps.")
+        lat = self.ask_number("Latitude (-90 to 90)", lat, -90.0, 90.0, float)
+        lon = self.ask_number("Longitude (-180 to 180)", lon, -180.0, 180.0, float)
+        label = self.ask_text("Label shown on the PADD", self.current("location_name"))
+        self.set("latitude", round(lat, 4))
+        self.set("longitude", round(lon, 4))
+        self.set("location_name", label)
+
+    # ----- calendar -----
+
+    def section_calendar(self):
+        self.out("\n== Calendar ==")
+        self.env_note(("ics_feed_url",))
+        current = str(self.raw.get("ics_feed_url") or "")
+        if current:
+            self.out("A calendar feed is saved (%s)." % mask(current))
+            if self.yes("Keep it?"):
+                if self.yes("Check that it still works?"):
+                    self._check_feed(current)
+                return
+        else:
+            self.out("Not set yet.")
+        self.out("Paste your calendar's private feed address. Where to find it:\n"
+                 "  Google:  calendar.google.com > Settings > your calendar > Integrate calendar >\n"
+                 "           'Secret address in iCal format'\n"
+                 "  iCloud:  Calendar app > right-click the calendar > Share > Public Calendar > copy link\n"
+                 "  Outlook: Settings > Calendar > Shared calendars > Publish a calendar > ICS link\n"
+                 "Anyone with this address can read your calendar, so typing is hidden; nothing will appear.")
+        for _ in range(5):
+            url = self.secret("Calendar feed address (Enter to cancel): ").strip()
+            if not url:
+                if current and self.yes("Remove the saved calendar feed?", default=False):
+                    self.set("ics_feed_url", "")
+                return
+            if not url.lower().startswith(("https://", "http://", "webcal://")):
+                self.out("  That should start with https:// or webcal://")
+                continue
+            if self._check_feed(url) or self.yes("Save it anyway?", default=False):
+                self.set("ics_feed_url", url)
+                return
+        self.out("Calendar unchanged.")
+
+    def _check_feed(self, url):
+        fetch_url = "https://" + url[len("webcal://"):] if url.lower().startswith("webcal://") else url
+        self.out("  Checking the feed...")
+        try:
+            text = self.fetch(fetch_url)
+        except Exception as e:
+            reason = str(e).replace(fetch_url, "(feed address)").replace(url, "(feed address)")
+            self.out("  Couldn't download the feed: %s%s" % (reason, tls_hint(e)))
+            return False
+        if "BEGIN:VCALENDAR" not in text.upper():
+            self.out("  That address answered, but what came back isn't a calendar (.ics) feed.")
+            return False
+        try:
+            events = server.collect_upcoming(text, everything=True)
+        except Exception as e:
+            self.out("  The feed downloaded but couldn't be read (%s)." % type(e).__name__)
+            return False
+        days = server.LOOKAHEAD_DAYS
+        if not events:
+            self.out("  Feed OK, but it has no upcoming events in the next %d days." % days)
+        else:
+            ev = events[0]
+            self.out("  Feed OK: found %d upcoming event%s in the next %d days.\n  Next: %s %s  %s"
+                     % (len(events), "" if len(events) == 1 else "s", days, ev["date"], ev["time"], ev["summary"]))
+        return True
+
+    # ----- sounds -----
+
+    def section_sounds(self):
+        self.out("\n== Sounds ==")
+        self.env_note(("sounds_enabled", "sound_volume", "tap_sounds", "quiet_hours",
+                       "incoming_repeat_minutes", "incoming_repeat_max", "sound_files"))
+        enabled = self.yes("Play sound effects on the PADD?", default=server._as_bool(self.current("sounds_enabled")))
+        self.set("sounds_enabled", enabled)
+        if not enabled:
+            return
+        volume = int(round(_number(self.current("sound_volume"), float, 0.6) * 100))
+        volume = self.ask_number("Volume, 0-100", min(100, max(0, volume)), 0, 100)
+        self.set("sound_volume", round(volume / 100.0, 2))
+        self.set("tap_sounds", self.yes("Beep on every button press?",
+                                        default=server._as_bool(self.current("tap_sounds"))))
+        self.set("quiet_hours", self._ask_quiet_hours(str(self.current("quiet_hours") or "")))
+        minutes = self.ask_number("Repeat the new-message alert every how many minutes while it's unread "
+                                  "(0 = never)", _number(self.current("incoming_repeat_minutes"), int, 5), 0, 120)
+        self.set("incoming_repeat_minutes", minutes)
+        if minutes:
+            self.set("incoming_repeat_max", self.ask_number(
+                "Most repeats per message", _number(self.current("incoming_repeat_max"), int, 3), 0, 50))
+        self._sound_files()
+
+    def _ask_quiet_hours(self, current):
+        self.out("Quiet hours: new messages still flash on screen, but make no sound.")
+        while True:
+            answer = self.ask("Quiet hours as HH:MM-HH:MM, or OFF [%s]: " % (current or "OFF")).strip()
+            if not answer:
+                return current
+            if answer.lower() in ("off", "none", "no"):
+                return ""
+            m = QUIET_RE.match(answer.replace(" ", ""))
+            if m:
+                h1, m1, h2, m2 = [int(g) for g in m.groups()]
+                if h1 < 24 and h2 < 24 and m1 < 60 and m2 < 60:
+                    return "%02d:%02d-%02d:%02d" % (h1, m1, h2, m2)
+            self.out("  Use 24-hour times like 22:00-07:00.")
+
+    def _sound_files(self):
+        try:
+            files = sorted(f for f in os.listdir(self.sounds_dir)
+                           if f.lower().endswith(server.SOUND_EXTENSIONS) and not f.startswith("."))
+        except OSError:
+            files = []
+        mapping = self.current("sound_files")
+        mapping = dict(mapping) if isinstance(mapping, dict) else {}
+        if not files:
+            self.out("No sound files in the sounds/ folder, so the PADD uses its built-in tones.\n"
+                     "(To use your own, see sounds/README.md, then run:  python3 configure.py sounds)")
+            return
+        self.out("Found %d sound file%s in sounds/." % (len(files), "" if len(files) == 1 else "s"))
+        if not self.yes("Choose which files play for each cue?", default=False):
+            return
+        cues = list(server.SOUND_CUES)
+        while True:
+            self.out("")
+            for i, cue in enumerate(cues):
+                self.out("  %d. %-9s %-30s %s" % (i + 1, cue, "(" + CUE_HELP[cue] + ")",
+                                                 mapping.get(cue, "built-in tone")))
+            idx = self.pick("Cue number to change (Enter when done): ", len(cues))
+            if idx is None:
+                break
+            for j, name in enumerate(files):
+                self.out("    %d. %s" % (j + 1, name))
+            self.out("    0. built-in tone")
+            answer = self.ask("  File number for %s (Enter = no change): " % cues[idx]).strip()
+            if answer == "0":
+                mapping.pop(cues[idx], None)
+            elif answer.isdigit() and 1 <= int(answer) <= len(files):
+                mapping[cues[idx]] = files[int(answer) - 1]
+            elif answer:
+                self.out("  Type a number from the list.")
+        self.set("sound_files", mapping)
+
+    # ----- kiosk security -----
+
+    def section_security(self):
+        self.out("\n== Kiosk security ==")
+        self.env_note(("kiosk_allowed_ips", "send_rate_limit_per_hour"))
+        self.out("Normally any device on your Wi-Fi that opens the PADD page can read and send messages.\n"
+                 "You can limit that to the iPad's IP address. The server machine is always allowed.\n"
+                 "  Find the iPad's address: Settings > Wi-Fi > tap (i) next to your network > IP Address.\n"
+                 "  Tip: reserve that address for the iPad in your router, so it never changes.")
+        ips = [str(ip) for ip in server._as_list(self.current("kiosk_allowed_ips"), "kiosk_allowed_ips")]
+
+        def add(items):
+            answer = self.ask("  IP address to allow, e.g. 192.168.1.42 (Enter to cancel): ").strip()
+            if not answer:
+                return
+            try:
+                ip = str(ipaddress.ip_address(answer))
+            except ValueError:
+                self.out("  That isn't an IP address. It looks like four numbers with dots between them.")
+                return
+            if ip in items:
+                self.out("  %s is already on the list." % ip)
+            else:
+                items.append(ip)
+
+        def remove(items):
+            idx = self.pick_item(items, "remove")
+            if idx is not None:
+                items.pop(idx)
+
+        self.edit_list("Devices allowed to use messaging (none listed = any device on your network)",
+                       ips, str, [("a", "[A]dd", add), ("r", "[R]emove", remove)])
+        self.set("kiosk_allowed_ips", ips)
+        rate = _number(self.current("send_rate_limit_per_hour"), int, 10)
+        self.set("send_rate_limit_per_hour", self.ask_number(
+            "Most messages the PADD may send per hour (0 = no limit)", max(0, rate), 0, 1000))
+
+
+def place_label(r):
+    parts = []
+    for field in ("name", "admin1", "country"):
+        value = str(r.get(field) or "").strip()
+        if value and value not in parts:
+            parts.append(value)
+    return ", ".join(parts)
+
+
+def short_label(r):
+    name = str(r.get("name") or "").strip()
+    region = str(r.get("admin1") or r.get("country") or "").strip()
+    return "%s, %s" % (name, region) if region and region != name else name
+
+
+# ---------------------------------------------------------------------------
+# The messaging wizard
+# ---------------------------------------------------------------------------
+
+class Wizard(Prompts):
+    def __init__(self, raw, ask=input, secret=getpass.getpass, out=print,
+                 make_transport=server.TelegramTransport):
+        Prompts.__init__(self, ask, secret, out)
+        self.raw = raw
+        self.make_transport = make_transport
+        self.transport = None
+        self.bot_username = ""
 
     # ----- steps -----
 
@@ -388,6 +808,27 @@ def run_messaging(path, ask=input, secret=getpass.getpass, out=print,
     return 0
 
 
+def run_section(path, name, ask=input, secret=getpass.getpass, out=print, fetch=http_get,
+                sounds_dir=server.SOUNDS_DIR, check_server=server_running):
+    raw = load_raw(path)
+    before = copy.deepcopy(raw)
+    setup = Setup(raw, ask, secret, out, fetch, sounds_dir)
+    out("LCARS PADD setup: %s\nConfig file: %s\n(Press Enter to keep the value in [brackets]. "
+        "Ctrl+C quits without saving.)" % (name, path))
+    try:
+        getattr(setup, "section_" + name)()
+        saved = save_changes(path, before, raw, setup)
+    except Abort as e:
+        out("\n%s Nothing saved." % e)
+        return 1
+    except (KeyboardInterrupt, EOFError):
+        out("\nCancelled. Nothing saved.")
+        return 1
+    if saved:
+        out("\n" + restart_hint(raw, check_server))
+    return 0 if saved or not changed_keys(before, raw) else 1
+
+
 def run_show(path, out=print):
     raw = load_raw(path)
     out("Config file: %s%s" % (path, "" if raw else " (not found)"))
@@ -403,8 +844,9 @@ def main(argv):
         return run_messaging(path)
     if command == "show":
         return run_show(path)
+    if command in SECTIONS:
+        return run_section(path, command)
     print(__doc__.strip())
-    print("\n(The full guided setup for location, calendar, presets and sounds is coming in a later version.)")
     return 0 if command in ("", "-h", "--help", "help") else 2
 
 
