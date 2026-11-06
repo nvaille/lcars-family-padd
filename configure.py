@@ -6,6 +6,10 @@ LCARS Family PADD - setup wizard (terminal). Standard library only.
   python3 configure.py calendar    calendar feed (.ics / webcal) address, checked before saving
   python3 configure.py messaging   set up Telegram messaging: bot token, pair contacts,
                                    optional family group, crew names, test transmission
+  python3 configure.py contacts    add (pair), remove or rename the people who get messages
+  python3 configure.py crew        add, remove, rename or reorder the kids who send messages
+  python3 configure.py presets     preset messages (text, order, default recipient),
+                                   the reply buttons on your phone, and the PADD's signature
   python3 configure.py sounds      sound effects, volume, quiet hours, your own sound files
   python3 configure.py security    which devices may use messaging, and the send rate limit
   python3 configure.py show        print the current settings with secrets masked
@@ -40,7 +44,7 @@ RESERVED_NAMES = ("ALL", "ALL HANDS")
 TEST_TEXT = "LCARS PADD ONLINE"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?"
 QUIET_RE = re.compile(r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$")
-SECTIONS = ("location", "calendar", "sounds", "security")
+SECTIONS = ("location", "calendar", "messaging", "contacts", "crew", "presets", "sounds", "security")
 CUE_HELP = {
     "tap": "any button press",
     "incoming": "a new message arrives",
@@ -559,43 +563,85 @@ def short_label(r):
 
 
 # ---------------------------------------------------------------------------
-# The messaging wizard
+# Messaging sections: messaging, contacts, crew, presets. Telegram is only
+# contacted when a step needs it (checking the token, pairing, the test).
 # ---------------------------------------------------------------------------
 
-class Wizard(Prompts):
-    def __init__(self, raw, ask=input, secret=getpass.getpass, out=print,
-                 make_transport=server.TelegramTransport):
-        Prompts.__init__(self, ask, secret, out)
-        self.raw = raw
+PRESET_MAX = 40       # characters; longer text won't fit on a PADD button
+REPLY_MAX = 30        # Telegram button labels (the server trims to this too)
+REPLIES_MAX = 6       # the server keeps at most 6 quick replies
+PAIR_IDLE_POLLS = 18  # about 3 minutes of nobody tapping START
+
+
+def to_label(to, contact_names=None):
+    if to == "ALL":
+        return "ALL HANDS"
+    if not to:
+        return "asks HAIL WHOM?"
+    if contact_names is not None and to not in contact_names:
+        return "%s (not a contact, so it asks HAIL WHOM?)" % to
+    return to
+
+
+def clean_presets(value):
+    """Presets as the server reads them: [{"text": ..., "to": NAME / "ALL" / None}]."""
+    presets = []
+    for p in value if isinstance(value, list) else []:
+        if isinstance(p, str):
+            p = {"text": p}
+        if isinstance(p, dict) and str(p.get("text", "")).strip():
+            to = str(p.get("to") or "").strip().upper()
+            presets.append({"text": str(p["text"]).strip(), "to": "ALL" if to == "ALL HANDS" else (to or None)})
+    return presets
+
+
+class Wizard(Setup):
+    def __init__(self, raw, ask=input, secret=getpass.getpass, out=print, fetch=http_get,
+                 sounds_dir=server.SOUNDS_DIR, make_transport=server.TelegramTransport,
+                 check_server=server_running):
+        Setup.__init__(self, raw, ask, secret, out, fetch, sounds_dir)
         self.make_transport = make_transport
+        self.check_server = check_server
         self.transport = None
         self.bot_username = ""
+        self.server_checked = False
+        self.setting_up_messaging = False
 
-    # ----- steps -----
+    # ----- shared helpers -----
 
-    def step_token(self):
-        self.out("\n== 1. Telegram bot ==")
-        existing = str(self.raw.get("telegram_bot_token") or "")
-        if existing and self.yes("Keep the saved bot token (%s)?" % mask(existing)):
-            if self._check_token(existing):
-                return
-            self.out("  The saved token didn't work; paste a new one.")
-        self.out("If you don't have a bot yet:\n"
-                 "  1. In Telegram, open a chat with @BotFather and send /newbot\n"
-                 "  2. Pick a display name (e.g. Home PADD) and a username ending in 'bot'\n"
-                 "  3. BotFather replies with a token like 123456789:AA...\n"
-                 "Paste it below. Typing is hidden; nothing will appear. Press Enter when done.")
-        for _ in range(3):
-            token = self.secret("Bot token: ").strip()
-            if not token:
-                raise Abort("No token entered.")
-            if not TOKEN_RE.match(token):
-                self.out("  That doesn't look like a bot token (digits, a colon, then ~35 characters).")
-                continue
-            if self._check_token(token):
-                self.raw["telegram_bot_token"] = token
-                return
-        raise Abort("Could not verify a bot token.")
+    def contacts(self):
+        return [dict(c) for c in (self.current("contacts") or []) if isinstance(c, dict)]
+
+    def crew(self):
+        return [n.upper() for n in server._as_list(self.current("crew") or [], "crew")]
+
+    def messaging_needed(self):
+        """True if removing the last contact or crew member would switch messaging off."""
+        return self.setting_up_messaging or \
+            str(self.current("messaging_provider") or "").strip().lower() == "telegram"
+
+    def check_bot_access(self):
+        """Only one program can read the bot's updates; warn (once) if the server is running."""
+        if self.server_checked:
+            return
+        self.server_checked = True
+        port = os.environ.get("LCARS_PORT") or self.raw.get("port") or server.DEFAULTS["port"]
+        if self.check_server(port):
+            self.out("\nWARNING: something is running on port %s, probably the PADD server.\n"
+                     "Only one program at a time can read the bot's updates, so stop the server first\n"
+                     "(press Ctrl+C in its window)." % port)
+            if not self.yes("Continue anyway?", default=False):
+                raise Abort("OK. Stop the server, then run this again.")
+
+    def connect(self):
+        """Use the saved bot token (for commands other than 'messaging')."""
+        if self.transport is not None:
+            return
+        token = str(self.current("telegram_bot_token") or "")
+        if not token:
+            raise Abort("No bot token is saved yet. Run:  python3 configure.py messaging")
+        if not self._check_token(token):
+            raise Abort("The saved bot token didn't work. Run:  python3 configure.py messaging")
 
     def _check_token(self, token):
         transport = self.make_transport(token)
@@ -622,56 +668,119 @@ class Wizard(Prompts):
             self.out("  Telegram error: %s%s" % (e, tls_hint(e)))
             return []
 
-    def step_contacts(self):
-        self.out("\n== 2. Contacts (the people who get PADD messages) ==")
-        contacts = [c for c in (self.raw.get("contacts") or []) if isinstance(c, dict)]
-        if contacts:
-            names = ", ".join(str(c.get("name")) for c in contacts)
-            if not self.yes("Keep the paired contacts (%s)?" % names):
-                contacts = []
-        if contacts and not self.yes("Pair more contacts now?", default=False):
-            self.raw["contacts"] = contacts
-            return
-        known = dict((str(c.get("telegram_chat_id")), str(c.get("name"))) for c in contacts)
-        taken = set(known.values()) | set(server._as_list(self.raw.get("crew") or [], "crew"))
-        taken = set(n.upper() for n in taken)
-        skipped = set()
-        self.out("Ask each person to open https://t.me/%s in Telegram and tap START.\n"
-                 "Waiting for them... (press Ctrl+C when everyone is paired)" % self.bot_username)
+    def _notify(self, chat_id, text):
         try:
-            while True:
-                for ev in self._poll():
+            self.transport.send(chat_id, text)
+        except server.TransportError:
+            pass
+
+    def finish(self):
+        """Confirm the updates the wizard read, so the server won't see them again."""
+        if self.transport is not None and self.transport.cursor is not None:
+            try:
+                self.transport.poll(timeout=0)
+            except server.TransportError:
+                pass
+
+    def _move(self, items):
+        idx = self.pick_item(items, "move")
+        if idx is None:
+            return
+        pos = self.pick("  Move it to position (1-%d, Enter to cancel): " % len(items), len(items))
+        if pos is not None:
+            items.insert(pos, items.pop(idx))
+
+    # ----- messaging (the whole Telegram setup) -----
+
+    def section_messaging(self):
+        self.out("\n== Text messaging (Telegram) ==")
+        self.env_note(("messaging_provider", "telegram_bot_token", "telegram_group_chat_id",
+                       "contacts", "crew"))
+        self.setting_up_messaging = True
+        self.check_bot_access()
+        self.step_token()
+        self.step_contacts()
+        self.step_group()
+        self.section_crew()
+        self.set("messaging_provider", "telegram")
+
+    def step_token(self):
+        self.out("\n-- Telegram bot --")
+        existing = str(self.current("telegram_bot_token") or "")
+        if existing and self.yes("Keep the saved bot token (%s)?" % mask(existing)):
+            if self._check_token(existing):
+                return
+            self.out("  The saved token didn't work; paste a new one.")
+        self.out("If you don't have a bot yet:\n"
+                 "  1. In Telegram, open a chat with @BotFather and send /newbot\n"
+                 "  2. Pick a display name (e.g. Home PADD) and a username ending in 'bot'\n"
+                 "  3. BotFather replies with a token like 123456789:AA...\n"
+                 "Paste it below. Typing is hidden; nothing will appear. Press Enter when done.")
+        for _ in range(3):
+            token = self.secret("Bot token: ").strip()
+            if not token:
+                raise Abort("No token entered.")
+            if not TOKEN_RE.match(token):
+                self.out("  That doesn't look like a bot token (digits, a colon, then ~35 characters).")
+                continue
+            if self._check_token(token):
+                self.set("telegram_bot_token", token)
+                return
+        raise Abort("Could not verify a bot token.")
+
+    def step_contacts(self):
+        if self.contacts():
+            self.section_contacts()
+        if not self.contacts():
+            self.out("\n-- Contacts (the people who get PADD messages) --")
+            contacts = []
+            self._pair(contacts, many=True)
+            if not contacts:
+                raise Abort("No contacts paired.")
+            self.set("contacts", contacts)
+            self.out("Contacts: %s" % ", ".join(c["name"] for c in contacts))
+
+    def _pair(self, contacts, many):
+        """Listen for START taps from new people and name them. Adds to contacts in place."""
+        self.check_bot_access()
+        known = set(str(c.get("telegram_chat_id")) for c in contacts)
+        skipped = set()
+        idle = 0
+        self.out("Ask %s to open https://t.me/%s in Telegram and tap START.\n"
+                 "Waiting... (press Ctrl+C to stop waiting)"
+                 % ("each person" if many else "the person", self.bot_username))
+        try:
+            while idle < PAIR_IDLE_POLLS:
+                events = self._poll()
+                idle = 0 if events else idle + 1
+                for ev in events:
                     if ev["type"] != "message" or ev.get("chat_type") != "private":
                         continue
                     if ev["sender"] in known or ev["sender"] in skipped:
                         continue
                     who = ev.get("first_name") or "someone"
                     self.out("\n  New contact: %s" % who)
+                    taken = set(c["name"] for c in contacts) | set(self.crew())
                     name = self.ask_name("  Display name for %s (e.g. MOM), or Enter to skip: " % who, taken)
                     if not name:
                         skipped.add(ev["sender"])
                         continue
-                    known[ev["sender"]] = name
-                    taken.add(name)
+                    known.add(ev["sender"])
                     contacts.append({"name": name, "telegram_chat_id": ev["sender"]})
                     self._notify(ev["sender"], "PADD link established. You are %s." % name)
                     self.out("  Paired %s." % name)
-                    if not self.yes("  Wait for another contact?"):
-                        raise KeyboardInterrupt
+                    if not many or not self.yes("  Wait for another contact?"):
+                        return
+            self.out("  Nobody new tapped START for a few minutes, so I stopped waiting.")
         except KeyboardInterrupt:
             self.out("")
-        if not contacts:
-            raise Abort("No contacts paired.")
-        self.raw["contacts"] = contacts
-        self.out("Contacts: %s" % ", ".join(c["name"] for c in contacts))
 
     def step_group(self):
-        self.out("\n== 3. Family group (optional) ==")
-        current = str(self.raw.get("telegram_group_chat_id") or "")
-        if current:
+        self.out("\n-- Family group (optional) --")
+        if str(self.current("telegram_group_chat_id") or ""):
             if self.yes("A family group is set for ALL HANDS. Keep it?"):
                 return
-            self.raw["telegram_group_chat_id"] = ""
+            self.set("telegram_group_chat_id", "")
         self.out("Without a group, ALL HANDS sends a private message to every contact.")
         if not self.yes("Use a Telegram family group for ALL HANDS instead?", default=False):
             return
@@ -686,41 +795,224 @@ class Wizard(Prompts):
                     text = (ev.get("text") or "").strip().lower()
                     if ev["type"] == "message" and ev.get("chat_type") in ("group", "supergroup") \
                             and (text == "/padd" or text.startswith("/padd@") or text.startswith("/padd ")):
-                        self.raw["telegram_group_chat_id"] = ev["chat"]
+                        self.set("telegram_group_chat_id", ev["chat"])
                         self._notify(ev["chat"], "PADD link established. This group is ALL HANDS.")
                         self.out("  Captured group %r." % (ev.get("chat_title") or "group"))
                         return
         except KeyboardInterrupt:
             self.out("\n  Skipped the family group.")
 
-    def step_crew(self):
-        self.out("\n== 4. Crew (the kids who send from the PADD) ==")
-        crew = [n.upper() for n in server._as_list(self.raw.get("crew") or [], "crew")]
-        if crew and self.yes("Keep the crew (%s)?" % ", ".join(crew)):
-            self.raw["crew"] = crew
+    # ----- contacts -----
+
+    def section_contacts(self):
+        self.out("\n== Contacts (the people who get PADD messages) ==")
+        self.env_note(("contacts",))
+        contacts = self.contacts()
+
+        def add(items):
+            try:
+                self.connect()
+                self._pair(items, many=False)
+            except Abort as e:
+                self.out("  %s" % e)
+
+        def remove(items):
+            idx = self.pick_item(items, "remove")
+            if idx is None:
+                return
+            name = items[idx]["name"]
+            if len(items) == 1 and self.messaging_needed():
+                self.out("  %s is the last contact, so messaging will turn off until you add one." % name)
+            if self.yes("  Remove %s? Their phone stops getting PADD messages." % name, default=False):
+                items.pop(idx)
+                self._retarget(name, None)
+
+        def rename(items):
+            idx = self.pick_item(items, "rename")
+            if idx is None:
+                return
+            old = items[idx]["name"]
+            taken = set(c["name"] for c in items if c is not items[idx]) | set(self.crew())
+            new = self.ask_name("  New name for %s (Enter to cancel): " % old, taken)
+            if new and new != old:
+                items[idx]["name"] = new
+                self._retarget(old, new)
+
+        self.edit_list("Contacts", contacts, lambda c: "%s (paired)" % c.get("name"),
+                       [("a", "[A]dd", add), ("r", "[R]emove", remove), ("n", "re[N]ame", rename)])
+        self.set("contacts", contacts)
+
+    def _retarget(self, old, new):
+        """Point presets that defaulted to a renamed or removed contact at the new name (or nobody)."""
+        presets = self.current("message_presets")
+        if not isinstance(presets, list):
             return
-        contact_names = set(str(c.get("name")).upper() for c in self.raw.get("contacts") or [])
-        crew = []
-        self.out("Enter each kid's name, one at a time. Press Enter on an empty line when done.")
-        while True:
-            name = self.ask_name("  Crew name: ", contact_names | set(crew))
-            if not name:
-                if crew:
+        changed = False
+        for p in presets:
+            if isinstance(p, dict) and str(p.get("to") or "").strip().upper() == old:
+                p["to"] = new
+                changed = True
+                self.out("  Preset %r now %s." % (p.get("text"), "goes to %s" % new if new else
+                                                  "asks HAIL WHOM? each time"))
+        if changed:
+            self.set("message_presets", presets)
+
+    # ----- crew -----
+
+    def section_crew(self):
+        self.out("\n== Crew (the kids who send from the PADD) ==")
+        self.env_note(("crew",))
+        crew = self.crew()
+        contact_names = set(c.get("name", "").upper() for c in self.contacts())
+        if not crew:
+            self.out("Enter each kid's name, one at a time. Press Enter on an empty line when done.")
+            while True:
+                name = self.ask_name("  Crew name: ", contact_names | set(crew))
+                if name:
+                    crew.append(name)
+                elif crew or not self.messaging_needed():
                     break
-                self.out("  At least one crew member is needed.")
-                continue
-            crew.append(name)
-        self.raw["crew"] = crew
+                else:
+                    self.out("  At least one crew member is needed.")
+            self.set("crew", crew)
+            return
+
+        def add(items):
+            name = self.ask_name("  Crew name to add (Enter to cancel): ", contact_names | set(items))
+            if name:
+                items.append(name)
+
+        def remove(items):
+            idx = self.pick_item(items, "remove")
+            if idx is None:
+                return
+            if len(items) == 1 and self.messaging_needed():
+                self.out("  The crew needs at least one name while messaging is on. Add the new name first.")
+            else:
+                items.pop(idx)
+
+        def rename(items):
+            idx = self.pick_item(items, "rename")
+            if idx is None:
+                return
+            name = self.ask_name("  New name for %s (Enter to cancel): " % items[idx],
+                                 contact_names | (set(items) - set([items[idx]])))
+            if name:
+                items[idx] = name
+
+        self.edit_list("Crew", crew, str, [("a", "[A]dd", add), ("r", "[R]emove", remove),
+                                           ("n", "re[N]ame", rename), ("m", "[M]ove", self._move)])
+        self.set("crew", crew)
+
+    # ----- presets and quick replies -----
+
+    def section_presets(self):
+        self.out("\n== Preset messages ==")
+        self.env_note(("message_presets", "quick_replies", "padd_sender_name"))
+        self.out("These are the messages the kids can send from the PADD (6 to a page). Each one can\n"
+                 "go to a default recipient, or ask HAIL WHOM? every time.")
+        original = clean_presets(self.current("message_presets"))
+        presets = copy.deepcopy(original)
+        names = [c.get("name", "").upper() for c in self.contacts()]
+
+        def add(items):
+            text = self._ask_short("  New message (Enter to cancel): ", PRESET_MAX)
+            if text:
+                items.append({"text": text, "to": self._ask_recipient(None, names)})
+
+        def edit(items):
+            idx = self.pick_item(items, "edit")
+            if idx is not None:
+                text = self._ask_short("  New text for %r (Enter to cancel): " % items[idx]["text"], PRESET_MAX)
+                if text:
+                    items[idx]["text"] = text
+
+        def recipient(items):
+            idx = self.pick_item(items, "change")
+            if idx is not None:
+                items[idx]["to"] = self._ask_recipient(items[idx]["to"], names)
+
+        def remove(items):
+            idx = self.pick_item(items, "remove")
+            if idx is None:
+                return
+            if len(items) == 1:
+                self.out("  Keep at least one preset. Add the new one first.")
+            else:
+                items.pop(idx)
+
+        self.edit_list("Presets", presets, lambda p: "%-*s -> %s" % (PRESET_MAX // 2, p["text"],
+                                                                      to_label(p["to"], names)),
+                       [("a", "[A]dd", add), ("e", "[E]dit text", edit), ("t", "[T]o", recipient),
+                        ("m", "[M]ove", self._move), ("r", "[R]emove", remove)])
+        if presets != original:
+            self.set("message_presets", presets)
+        self._quick_replies()
+        name = self.ask_text("\nHow the PADD signs its messages", str(self.current("padd_sender_name") or ""))
+        self.set("padd_sender_name", name.upper()[:20])
+
+    def _ask_short(self, prompt, limit):
+        while True:
+            text = re.sub(r"\s+", " ", self.ask(prompt)).strip().upper()
+            if len(text) <= limit:
+                return text
+            self.out("  That's %d characters; keep it to %d so it fits on a button." % (len(text), limit))
+
+    def _ask_recipient(self, current, names):
+        options = [None, "ALL"] + names
+        for i, option in enumerate(options):
+            self.out("    %d. %s" % (i + 1, "Ask each time (HAIL WHOM?)" if option is None else
+                                     "ALL HANDS (everyone)" if option == "ALL" else option))
+        idx = self.pick("  Default recipient (Enter keeps: %s): " % to_label(current, names), len(options))
+        return current if idx is None else options[idx]
+
+    def _quick_replies(self):
+        self.out("\n== Quick replies ==\n"
+                 "These are the buttons under each PADD message on your phone. Tapping one sends\n"
+                 "that answer back to the PADD.")
+        original = [r.upper() for r in server._as_list(self.current("quick_replies") or [], "quick_replies")]
+        replies = list(original)
+
+        def add(items):
+            if len(items) >= REPLIES_MAX:
+                self.out("  There's room for %d buttons. Remove one first." % REPLIES_MAX)
+                return
+            text = self._ask_short("  New reply (Enter to cancel): ", REPLY_MAX)
+            if text:
+                items.append(text)
+
+        def edit(items):
+            idx = self.pick_item(items, "edit")
+            if idx is not None:
+                text = self._ask_short("  New text for %s (Enter to cancel): " % items[idx], REPLY_MAX)
+                if text:
+                    items[idx] = text
+
+        def remove(items):
+            idx = self.pick_item(items, "remove")
+            if idx is not None:
+                items.pop(idx)
+
+        self.edit_list("Quick replies", replies, str,
+                       [("a", "[A]dd", add), ("e", "[E]dit text", edit), ("m", "[M]ove", self._move),
+                        ("r", "[R]emove", remove)])
+        if replies != original:
+            self.set("quick_replies", replies)
+
+    # ----- test transmission -----
 
     def step_test(self):
-        self.out("\n== 6. Test transmission ==")
+        self.out("\n== Test transmission ==")
         if not self.yes("Send '%s' to every contact and wait for a reply tap?" % TEST_TEXT):
             return
+        self.check_bot_access()
+        contacts = self.contacts()
         nonce = uuid.uuid4().hex[:8]
-        buttons = [(label, "t:%s:%d" % (nonce, i))
-                   for i, label in enumerate(self.raw.get("quick_replies") or server.DEFAULTS["quick_replies"])]
+        replies = server._as_list(self.current("quick_replies") or [], "quick_replies") or ["ACKNOWLEDGED"]
+        buttons = [(label.upper()[:REPLY_MAX], "t:%s:%d" % (nonce, i))
+                   for i, label in enumerate(replies[:REPLIES_MAX])]
         sent = 0
-        for c in self.raw["contacts"]:
+        for c in contacts:
             try:
                 self.transport.send(c["telegram_chat_id"], TEST_TEXT, buttons)
                 sent += 1
@@ -730,7 +1022,7 @@ class Wizard(Prompts):
         if not sent:
             self.out("  Nothing was sent.")
             return
-        names = dict((str(c["telegram_chat_id"]), c["name"]) for c in self.raw["contacts"])
+        names = dict((str(c["telegram_chat_id"]), c["name"]) for c in contacts)
         self.out("Ask a contact to tap one of the buttons under the message.\n"
                  "Waiting up to 2 minutes... (Ctrl+C to skip)")
         try:
@@ -746,56 +1038,26 @@ class Wizard(Prompts):
         except KeyboardInterrupt:
             self.out("\n  Skipped waiting.")
 
-    def _notify(self, chat_id, text):
-        try:
-            self.transport.send(chat_id, text)
-        except server.TransportError:
-            pass
 
-    def finish(self):
-        """Confirm the updates the wizard read, so the server won't see them again."""
-        if self.transport is not None and self.transport.cursor is not None:
-            try:
-                self.transport.poll(timeout=0)
-            except server.TransportError:
-                pass
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
 
-
-def run_messaging(path, ask=input, secret=getpass.getpass, out=print,
-                  make_transport=server.TelegramTransport, check_server=server_running):
+def run_section(path, name, ask=input, secret=getpass.getpass, out=print, fetch=http_get,
+                sounds_dir=server.SOUNDS_DIR, check_server=server_running,
+                make_transport=server.TelegramTransport):
     raw = load_raw(path)
-    out("LCARS PADD setup: messaging\nConfig file: %s" % path)
-    port = os.environ.get("LCARS_PORT") or raw.get("port") or server.DEFAULTS["port"]
-    if check_server(port):
-        out("\nWARNING: something is running on port %s, probably the PADD server.\n"
-            "Only one program at a time can read the bot's updates, so stop the server first\n"
-            "(press Ctrl+C in its window)." % port)
-        if not Wizard(raw, ask, secret, out).yes("Continue anyway?", default=False):
-            out("Nothing changed.")
-            return 1
-    if os.environ.get("LCARS_TELEGRAM_TOKEN") or os.environ.get("LCARS_CONTACTS_JSON"):
-        out("\nNote: LCARS_* environment variables are set; they override config.json.")
-
-    wiz = Wizard(raw, ask, secret, out, make_transport)
+    before = copy.deepcopy(raw)
+    wiz = Wizard(raw, ask, secret, out, fetch, sounds_dir, make_transport, check_server)
+    out("LCARS PADD setup: %s\nConfig file: %s\n(Press Enter to keep the value in [brackets]. "
+        "Ctrl+C quits without saving.)" % (name, path))
     saved = False
     try:
-        wiz.step_token()
-        wiz.step_contacts()
-        wiz.step_group()
-        wiz.step_crew()
-        raw["messaging_provider"] = "telegram"
-
-        out("\n== 5. Save ==")
-        for line in summary_lines(raw):
-            out("  " + line)
-        if not wiz.yes("Save these settings to %s?" % os.path.basename(path)):
-            out("Nothing saved.")
-            return 1
-        save_raw(path, raw)
-        saved = True
-        out("Saved (previous version in %s.bak; file is readable only by you)." % os.path.basename(path))
-
-        wiz.step_test()
+        getattr(wiz, "section_" + name)()
+        saved = save_changes(path, before, raw, wiz)
+        unchanged = not changed_keys(before, raw)
+        if name == "messaging" and (saved or unchanged):
+            wiz.step_test()
     except Abort as e:
         out("\n%s%s" % (e, "" if saved else " Nothing saved."))
         return 1
@@ -804,29 +1066,9 @@ def run_messaging(path, ask=input, secret=getpass.getpass, out=print,
         return 1
     finally:
         wiz.finish()
-    out("\nDone. Start the PADD server again:  python3 server.py")
-    return 0
-
-
-def run_section(path, name, ask=input, secret=getpass.getpass, out=print, fetch=http_get,
-                sounds_dir=server.SOUNDS_DIR, check_server=server_running):
-    raw = load_raw(path)
-    before = copy.deepcopy(raw)
-    setup = Setup(raw, ask, secret, out, fetch, sounds_dir)
-    out("LCARS PADD setup: %s\nConfig file: %s\n(Press Enter to keep the value in [brackets]. "
-        "Ctrl+C quits without saving.)" % (name, path))
-    try:
-        getattr(setup, "section_" + name)()
-        saved = save_changes(path, before, raw, setup)
-    except Abort as e:
-        out("\n%s Nothing saved." % e)
-        return 1
-    except (KeyboardInterrupt, EOFError):
-        out("\nCancelled. Nothing saved.")
-        return 1
     if saved:
         out("\n" + restart_hint(raw, check_server))
-    return 0 if saved or not changed_keys(before, raw) else 1
+    return 0 if saved or unchanged else 1
 
 
 def run_show(path, out=print):
@@ -840,8 +1082,6 @@ def run_show(path, out=print):
 def main(argv):
     command = argv[1] if len(argv) > 1 else ""
     path = server.config_path()
-    if command == "messaging":
-        return run_messaging(path)
     if command == "show":
         return run_show(path)
     if command in SECTIONS:
