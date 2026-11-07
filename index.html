@@ -1306,7 +1306,7 @@ body {
     var n = unreadList().length;
     return n ? n + ' UNREAD' : 'COMMS NOMINAL';
   }
-  function pageCount(total) { return Math.max(1, Math.ceil(total / PER_PAGE)); }
+  function pageCount(total, per) { return Math.max(1, Math.ceil(total / (per || PER_PAGE))); }
 
   /* ----- screen 0: dashboard additions ----- */
   function updateDash() {
@@ -1400,16 +1400,16 @@ body {
       box.appendChild(seg);
     }
   }
-  function pageButtons(page, total, set) {
-    if (total <= PER_PAGE) { return [null, null]; }
-    var pages = pageCount(total);
+  function pageButtons(page, total, set, per) {
+    if (total <= (per || PER_PAGE)) { return [null, null]; }
+    var pages = pageCount(total, per);
     return [
       { t: '▲ PAGE', fn: page > 0 ? function () { set(page - 1); } : null },
       { t: '▼ PAGE', fn: page < pages - 1 ? function () { set(page + 1); } : null }
     ];
   }
-  function pageSig(page, total, fallback) {
-    return total > PER_PAGE ? 'PAGE ' + (page + 1) + '/' + pageCount(total) : fallback;
+  function pageSig(page, total, fallback, per) {
+    return total > (per || PER_PAGE) ? 'PAGE ' + (page + 1) + '/' + pageCount(total, per) : fallback;
   }
 
   // Clears the comms bay, adds an LCARS heading, returns the main area.
@@ -1419,23 +1419,34 @@ body {
     var hd = el('div', 'hd hd-cm');
     hd.appendChild(el('h2', null, title));
     hd.appendChild(el('div', 'run'));
-    hd.appendChild(el('span', lost ? 'sig lost' : 'sig', sig));
+    var sigEl = el('span', lost ? 'sig lost' : 'sig', sig);
+    hd.appendChild(sigEl);
     box.appendChild(hd);
     var main = el('div', 'cm-main');
+    main.sigEl = sigEl;
     box.appendChild(main);
     return main;
   }
 
-  // Choice panels, PER_PAGE at a time. items: [{t: label, fn: handler}]
-  function panels(parent, items, page) {
+  // Choice panels, `per` (default PER_PAGE) at a time. items: [{t: label, fn: handler}]
+  function panels(parent, items, page, per) {
+    per = per || PER_PAGE;
     var row = el('div', 'opts');
-    for (var i = page * PER_PAGE; i < items.length && i < (page + 1) * PER_PAGE; i++) {
+    for (var i = page * per; i < items.length && i < (page + 1) * per; i++) {
       var p = el('div', 'opt tap ' + SPINE_COLORS[(i + 1) % 4], items[i].t);
       p.onclick = tapper(items[i].fn);
       row.appendChild(p);
     }
     parent.appendChild(row);
     return row;
+  }
+
+  // How many choice panels fit in the bay: 3 per row, as many rows as the space allows.
+  // Matches the .opts / .opt CSS: 0.75rem top margin, 5.75rem panels, 0.5rem between rows.
+  function panelCapacity(main) {
+    var rem = parseFloat(document.documentElement.style.fontSize) || 16;
+    var rows = Math.floor((main.clientHeight - 0.75 * rem + 0.5 * rem) / (6.25 * rem));
+    return Math.max(1, rows) * 3;
   }
 
   // Shrink text until it fits its box (same idea as fitQuote).
@@ -1614,7 +1625,7 @@ body {
         })(cfg.crew[i]) });
       }
       title = 'Who Is Transmitting?';
-      sig = pageSig(c.page, items.length, c.mode === 'ack' ? 'ACKNOWLEDGE' : 'OPEN CHANNEL');
+      sig = c.mode === 'ack' ? 'ACKNOWLEDGE' : 'OPEN CHANNEL';
     } else if (c.step === 'what') {
       for (i = 0; i < cfg.message_presets.length; i++) {
         items.push({ t: cfg.message_presets[i].text, fn: (function (idx) {
@@ -1625,15 +1636,15 @@ body {
           };
         })(i) });
       }
-      if (cfg.allow_custom_messages) {
-        items.push({ t: 'CUSTOM MESSAGE ▸', fn: function () {
+      if (cfg.allow_custom_messages) {   // always the first button
+        items.unshift({ t: 'CUSTOM MESSAGE ▸', fn: function () {
           c.preset = CUSTOM;
           if (!c.toLocked) { c.to = null; }
           goStep('type');
         } });
       }
       title = c.from + MID + 'Channel Open';
-      sig = pageSig(c.page, items.length, c.toLocked ? 'TO ' + toLabel(c.to) : 'SELECT MESSAGE');
+      sig = c.toLocked ? 'TO ' + toLabel(c.to) : 'SELECT MESSAGE';
     } else if (c.step === 'whom') {
       var names = cfg.contacts.concat(['ALL']);
       for (i = 0; i < names.length; i++) {
@@ -1642,7 +1653,7 @@ body {
         })(names[i]) });
       }
       title = 'Hail Whom?';
-      sig = pageSig(c.page, items.length, 'SELECT CHANNEL');
+      sig = 'SELECT CHANNEL';
     } else if (c.step === 'type') {
       renderType(c);
       return;
@@ -1659,9 +1670,12 @@ body {
       return;
     }
     main = bay(title, sig, false);
-    panels(main, items, c.page);
+    var per = panelCapacity(main);   // fill the bay before paging
+    if (c.page > pageCount(items.length, per) - 1) { c.page = pageCount(items.length, per) - 1; }
+    main.sigEl.textContent = pageSig(c.page, items.length, sig, per);
+    panels(main, items, c.page, per);
     spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }]
-      .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); })));
+      .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); }, per)));
   }
 
   // Typed text as the server will store it: one line, trimmed.
