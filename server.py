@@ -47,6 +47,7 @@ DEFAULTS = {
     "max_events": 5,             # how many events the kiosk receives
     "lookahead_days": 60,        # how far ahead recurring events are expanded
     "timed_default_minutes": 60, # assumed length of a timed event with no DTEND/DURATION
+    "nightly_reload": True,      # kiosk reloads itself at 3 a.m. to keep old Safari stable
 
     # --- text messages (see docs/text-messages-plan.md) ---
     "messaging_provider": "none",      # none | telegram  (twilio: future adapter)
@@ -89,6 +90,7 @@ ENV_VARS = {
     "max_events": "LCARS_MAX_EVENTS",
     "lookahead_days": "LCARS_LOOKAHEAD_DAYS",
     "timed_default_minutes": "LCARS_TIMED_DEFAULT_MINUTES",
+    "nightly_reload": "LCARS_NIGHTLY_RELOAD",
     "messaging_provider": "LCARS_MESSAGING_PROVIDER",
     "telegram_bot_token": "LCARS_TELEGRAM_TOKEN",
     "telegram_group_chat_id": "LCARS_TELEGRAM_GROUP_ID",
@@ -156,7 +158,7 @@ def normalize_messaging(cfg, warn=print):
     cfg["telegram_bot_token"] = str(cfg["telegram_bot_token"] or "").strip()
     cfg["telegram_group_chat_id"] = str(cfg["telegram_group_chat_id"] or "").strip()
     cfg["padd_sender_name"] = str(cfg["padd_sender_name"] or "").strip().upper() or "HOME PADD"
-    for key in ("allow_custom_messages", "sounds_enabled", "tap_sounds"):
+    for key in ("allow_custom_messages", "sounds_enabled", "tap_sounds", "nightly_reload"):
         cfg[key] = _as_bool(cfg[key])
     for key in ("message_retention_hours", "max_message_length", "send_rate_limit_per_hour",
                 "incoming_repeat_minutes", "incoming_repeat_max"):
@@ -1158,6 +1160,7 @@ def public_config(cfg, messaging_enabled):
     """Non-secret values for /api/config. Never add tokens, chat IDs or the feed URL here."""
     out = {
         "location_name": cfg["location_name"],
+        "nightly_reload": cfg["nightly_reload"],
         "messaging_enabled": bool(messaging_enabled),
         "sounds_enabled": cfg["sounds_enabled"],
         "sound_volume": cfg["sound_volume"],

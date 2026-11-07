@@ -120,6 +120,25 @@ class ConfigTests(unittest.TestCase):
             os.environ.clear()
             os.environ.update(old)
 
+    def test_nightly_reload_defaults_on_and_can_be_turned_off(self):
+        self.assertIs(server.public_config(make_cfg(), False)["nightly_reload"], True)
+        cfg = server.normalize_messaging(make_cfg(nightly_reload="false"), warn=lambda m: None)
+        self.assertIs(cfg["nightly_reload"], False)
+        self.assertIs(server.public_config(cfg, True)["nightly_reload"], False)
+
+    def test_nightly_reload_env_var(self):
+        path = os.path.join(_TMP, "cfg-nr.json")
+        with open(path, "w") as fh:
+            json.dump({"nightly_reload": True}, fh)
+        old = dict(os.environ)
+        try:
+            os.environ["LCARS_CONFIG"] = path
+            os.environ["LCARS_NIGHTLY_RELOAD"] = "off"
+            self.assertIs(server.load_config()["nightly_reload"], False)
+        finally:
+            os.environ.clear()
+            os.environ.update(old)
+
     def test_public_config_has_no_secrets(self):
         cfg = make_cfg(telegram_group_chat_id="-100999")
         text = json.dumps(server.public_config(cfg, True))

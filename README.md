@@ -11,7 +11,7 @@ It's built to run on very old hardware (the reference kiosk is a 1st-gen iPad Mi
 - **Mission Log**: upcoming events from an iCloud, Google, Outlook or any other `.ics` feed, with recurring-event support (RRULE, EXDATE, RECURRENCE-ID)
 - **Stoic Directive**: a quote that rotates hourly
 - **Family comms**: kids send preset messages ("I'M HOME FROM SCHOOL") to parents' phones over Telegram, and parents reply. Includes LCARS-style sound cues and quiet hours
-- Scales the 1024×748 design to any screen; auto-reloads nightly to keep old Safari stable
+- Scales the 1024×748 design to any screen; auto-reloads nightly to keep old Safari stable (`nightly_reload`)
 
 ## Quick start
 
@@ -41,6 +41,7 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `max_events` | `LCARS_MAX_EVENTS` | Events sent to the kiosk (default `5`) |
 | `lookahead_days` | `LCARS_LOOKAHEAD_DAYS` | How far ahead recurring events are expanded (default `60`) |
 | `timed_default_minutes` | `LCARS_TIMED_DEFAULT_MINUTES` | Assumed length of events with no end time (default `60`) |
+| `nightly_reload` | `LCARS_NIGHTLY_RELOAD` | Reload the kiosk page at 3 a.m. to keep old Safari stable (default `true`). Each reload needs a tap to re-arm audio |
 | `messaging_provider` | `LCARS_MESSAGING_PROVIDER` | `none` (default) or `telegram`. Turns family text messages on |
 | `telegram_bot_token` | `LCARS_TELEGRAM_TOKEN` | Your bot's token from @BotFather. **Secret** |
 | `telegram_group_chat_id` | `LCARS_TELEGRAM_GROUP_ID` | Optional family group used for ALL HANDS. **Private** |
