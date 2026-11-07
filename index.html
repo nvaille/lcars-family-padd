@@ -495,6 +495,7 @@ body {
   var WEATHER_EVERY_MS = 15 * 60 * 1000;
   var EVENTS_EVERY_MS = 5 * 60 * 1000;
   var NIGHTLY_RELOAD_HOUR = 3;      // full page reload to clear memory on old Safari
+  var nightlyReload = true;         // config.json nightly_reload: false turns it off
   var XHR_TIMEOUT_MS = 20000;
 
   var DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
@@ -596,7 +597,7 @@ body {
       dl.appendChild(el('b', null, pad(d) + ' ' + MONTHS[now.getMonth()] + ' ' + now.getFullYear()));
     }
     if (h !== lastHour) {
-      if (lastHour !== -1 && h === NIGHTLY_RELOAD_HOUR) { window.location.reload(true); return; }
+      if (nightlyReload && lastHour !== -1 && h === NIGHTLY_RELOAD_HOUR) { window.location.reload(true); return; }
       lastHour = h;
       showQuote(now);
     }
@@ -1914,6 +1915,7 @@ body {
   function loadConfig() {
     getJSON('/api/config', function (c) {
       if (c && c.location_name) { $('wx-loc').textContent = c.location_name; }
+      if (c && c.nightly_reload === false) { nightlyReload = false; }
       if (c && c.messaging_enabled && c.crew && c.crew.length && !comms.enabled) { enableComms(c); }
     }, function () {
       setTimeout(loadConfig, 60 * 1000);   // server not up yet: try again
