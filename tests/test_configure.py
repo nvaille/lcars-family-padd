@@ -538,6 +538,7 @@ class EditorTests(unittest.TestCase):
                    "m", "4", "1",                             # NEED HELP to the top
                    "r", "3",                                  # remove CALL ME
                    "",                                        # done with presets
+                   "y",                                       # allow typed messages
                    "a", "be there soon",                      # quick reply added
                    "r", "2",                                  # remove CALL ME reply
                    "m", "3", "1",                             # BE THERE SOON first
@@ -551,25 +552,27 @@ class EditorTests(unittest.TestCase):
                                                   {"text": "PICK ME UP", "to": None}])
         self.assertEqual(cfg["quick_replies"], ["BE THERE SOON", "GOT IT", "ON MY WAY"])
         self.assertEqual(cfg["padd_sender_name"], "KITCHEN PADD")
+        self.assertTrue(cfg["allow_custom_messages"])
         self.assertIn("keep it to 40", self.text())
         self.assertEqual(cfg["contacts"], FAMILY["contacts"])
 
     def test_presets_untouched_defaults_are_not_written(self):
         existing = {"crew": ["SAM"]}
-        self.assertEqual(self.run_section("presets", ["", "", ""], existing=existing), 0, self.text())
+        self.assertEqual(self.run_section("presets", ["", "", "", ""], existing=existing), 0, self.text())
         self.assertIn("No changes", self.text())
+        self.assertNotIn("allow_custom_messages", self.saved())
         self.assertIn("I'M HOME FROM SCHOOL", self.text())
 
     def test_presets_keep_one_and_reply_limit(self):
         existing = dict(FAMILY, message_presets=[{"text": "HOME SAFE"}],
                         quick_replies=["A", "B", "C", "D", "E", "F"])
-        self.run_section("presets", ["r", "1", "", "a", "", ""], existing=existing)
+        self.run_section("presets", ["r", "1", "", "", "a", "", ""], existing=existing)
         self.assertIn("Keep at least one preset", self.text())
         self.assertIn("room for 6 buttons", self.text())
 
     def test_unknown_preset_recipient_is_flagged(self):
         existing = dict(FAMILY, message_presets=[{"text": "HI", "to": "GRAN"}])
-        self.run_section("presets", ["", "", ""], existing=existing)
+        self.run_section("presets", ["", "", "", ""], existing=existing)
         self.assertIn("GRAN (not a contact", self.text())
 
 
@@ -630,7 +633,7 @@ class TourTests(unittest.TestCase):
                    "",                    # contacts menu: done
                    "",                    # no family group
                    "",                    # crew menu: done
-                   "", "", "",            # presets done, replies done, signature
+                   "", "", "", "",        # presets done, typed messages, replies done, signature
                    "", "", "", "", "", "",  # sounds
                    "", "",                # allowlist done, rate limit
                    "n"]                   # no test transmission
