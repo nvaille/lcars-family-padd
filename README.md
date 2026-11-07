@@ -49,7 +49,7 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `padd_sender_name` | `LCARS_PADD_SENDER_NAME` | How the kiosk signs messages (default `HOME PADD`) |
 | `message_presets` | `LCARS_MESSAGE_PRESETS_JSON` | Preset messages, each with an optional default recipient: `[{"text":"…","to":"ALL"}]` |
 | `quick_replies` | `LCARS_QUICK_REPLIES_JSON` | Telegram reply buttons (default `["GOT IT","CALL ME","ON MY WAY"]`) |
-| `allow_custom_messages` | `LCARS_ALLOW_CUSTOM_MESSAGES` | Allow typed messages, not just presets (default `false`) |
+| `allow_custom_messages` | `LCARS_ALLOW_CUSTOM_MESSAGES` | Allow typed messages, not just presets (default `false`). Adds a **CUSTOM MESSAGE** button after the presets |
 | `message_retention_hours` | `LCARS_MESSAGE_RETENTION_HOURS` | How long messages are kept (default `24`) |
 | `max_message_length` | `LCARS_MAX_MESSAGE_LENGTH` | Longest typed message (default `160`) |
 | `send_rate_limit_per_hour` | `LCARS_SEND_RATE_LIMIT` | Most messages the kiosk can send per hour (default `10`, `0` = no limit) |
@@ -76,7 +76,7 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `python3 configure.py messaging` | Telegram bot, contacts, family group and crew (see below) |
 | `python3 configure.py contacts` | Add (pair), remove or rename the people who get messages |
 | `python3 configure.py crew` | Add, remove, rename or reorder the kids who send messages |
-| `python3 configure.py presets` | Preset messages (text, order, default recipient), reply buttons and the PADD's signature |
+| `python3 configure.py presets` | Preset messages (text, order, default recipient), typed messages on/off, reply buttons and the PADD's signature |
 | `python3 configure.py sounds` | Sound on/off, volume, quiet hours, alert repeats, and your own sound files |
 | `python3 configure.py security` | Which devices may use messaging (by IP address) and the hourly send limit |
 | `python3 configure.py test` | Sends a test message to every contact and waits for a reply tap |

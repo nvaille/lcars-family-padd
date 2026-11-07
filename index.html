@@ -126,6 +126,7 @@ body {
 .o { background: #ff6600; }
 .a { background: #ff9900; }
 .c { background: #ffcc99; }
+.bl { background: #66ccff; }
 
 /* hollow slot where the two conduits split apart */
 .cut { position: absolute; left: 0; width: 34%; height: 50%; background: #000; }
@@ -355,6 +356,22 @@ body {
 .opt:nth-child(3n+2), .opt:nth-child(3n+3) { margin-left: 1.1%; }
 .opt:nth-child(n+4) { margin-top: 0.5rem; }
 
+/* custom message: field in the top half (the iOS keyboard covers the bottom ~45%) */
+.ty-row { flex: 0 0 auto; display: flex; flex-direction: row; margin-top: 0.75rem; }
+.ty-tab { flex: 0 0 0.75rem; background: #ff9900; margin-right: 0.75rem; }
+.ty-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ty-field { display: block; width: 100%; height: 8.25rem; margin: 0; padding: 0.4rem 0.6rem; border: 0;
+            border-radius: 0; border-bottom: 0.25rem solid #ff9900; background: #000; color: #ffcc99;
+            font-family: inherit; font-size: 1.75rem; line-height: 1.2; text-transform: none; resize: none;
+            outline: none; -webkit-appearance: none; -webkit-user-select: text; user-select: text; }
+.ty-count { font-size: 1.125rem; letter-spacing: 0.08em; color: #66ccff; text-align: right; margin-top: 0.3rem; }
+.ty-count.full { color: #ff6600; }
+.ty-btns { flex: 0 0 13rem; display: flex; flex-direction: column; margin-left: 0.75rem; }
+.ty-btns .opt { width: 100%; height: 4.25rem; margin: 0; }
+.ty-btns .opt + .opt { margin-top: 0.5rem; }
+.opt.off { opacity: 0.35; }
+.cf-text.typed { text-transform: none; font-size: 2.25rem; word-wrap: break-word; }
+
 /* confirm + result */
 .cf-route { flex: 0 0 auto; font-size: 1.625rem; font-weight: 700; letter-spacing: 0.06em; color: #66ccff; margin-top: 0.75rem; }
 .cf-text { flex: 0 1 auto; min-height: 0; overflow: hidden; font-size: 2.75rem; line-height: 1.15; color: #ffcc99; margin-top: 0.4rem; }
@@ -497,6 +514,7 @@ body {
 
   /* ---------- scale the 1024x748 design to the actual screen ---------- */
   function fitScreen() {
+    if (typing()) { return; }   // the iOS keyboard can fire resize; re-rendering would drop the field
     var w = window.innerWidth, h = window.innerHeight;
     var s = Math.min(w / 1024, h / 748);
     document.documentElement.style.fontSize = (16 * s) + 'px';
@@ -506,6 +524,11 @@ body {
     trimEvents();
     trimCascade();
     if (comms.screen !== 'dash') { render(); }
+  }
+
+  function typing() {
+    var a = document.activeElement;
+    return !!(a && a.tagName === 'TEXTAREA');
   }
 
   /* ---------- kiosk hardening ---------- */
@@ -1199,6 +1222,7 @@ body {
   var SENT_HOLD_MS = 3000;
   var PER_PAGE = 6;
   var SPINE_COLORS = ['a', 'c', 'o', 'a'];
+  var CHOICE_COLORS = ['bl', 'c', 'a', 'o'];   // compose choice panels: blue joins the rotation
   var SPINE_CODES = ['04-041969', '05-1701D', '06-071984', '07-2409'];
   var MID = ' · ', ARROW = ' → ';
 
@@ -1284,7 +1308,7 @@ body {
     var n = unreadList().length;
     return n ? n + ' UNREAD' : 'COMMS NOMINAL';
   }
-  function pageCount(total) { return Math.max(1, Math.ceil(total / PER_PAGE)); }
+  function pageCount(total, per) { return Math.max(1, Math.ceil(total / (per || PER_PAGE))); }
 
   /* ----- screen 0: dashboard additions ----- */
   function updateDash() {
@@ -1378,16 +1402,16 @@ body {
       box.appendChild(seg);
     }
   }
-  function pageButtons(page, total, set) {
-    if (total <= PER_PAGE) { return [null, null]; }
-    var pages = pageCount(total);
+  function pageButtons(page, total, set, per) {
+    if (total <= (per || PER_PAGE)) { return [null, null]; }
+    var pages = pageCount(total, per);
     return [
       { t: '▲ PAGE', fn: page > 0 ? function () { set(page - 1); } : null },
       { t: '▼ PAGE', fn: page < pages - 1 ? function () { set(page + 1); } : null }
     ];
   }
-  function pageSig(page, total, fallback) {
-    return total > PER_PAGE ? 'PAGE ' + (page + 1) + '/' + pageCount(total) : fallback;
+  function pageSig(page, total, fallback, per) {
+    return total > (per || PER_PAGE) ? 'PAGE ' + (page + 1) + '/' + pageCount(total, per) : fallback;
   }
 
   // Clears the comms bay, adds an LCARS heading, returns the main area.
@@ -1397,23 +1421,34 @@ body {
     var hd = el('div', 'hd hd-cm');
     hd.appendChild(el('h2', null, title));
     hd.appendChild(el('div', 'run'));
-    hd.appendChild(el('span', lost ? 'sig lost' : 'sig', sig));
+    var sigEl = el('span', lost ? 'sig lost' : 'sig', sig);
+    hd.appendChild(sigEl);
     box.appendChild(hd);
     var main = el('div', 'cm-main');
+    main.sigEl = sigEl;
     box.appendChild(main);
     return main;
   }
 
-  // Choice panels, PER_PAGE at a time. items: [{t: label, fn: handler}]
-  function panels(parent, items, page) {
+  // Choice panels, `per` (default PER_PAGE) at a time. items: [{t: label, fn: handler}]
+  function panels(parent, items, page, per, colors) {
+    per = per || PER_PAGE;
     var row = el('div', 'opts');
-    for (var i = page * PER_PAGE; i < items.length && i < (page + 1) * PER_PAGE; i++) {
-      var p = el('div', 'opt tap ' + SPINE_COLORS[(i + 1) % 4], items[i].t);
+    for (var i = page * per; i < items.length && i < (page + 1) * per; i++) {
+      var p = el('div', 'opt tap ' + (colors ? colors[i % colors.length] : SPINE_COLORS[(i + 1) % 4]), items[i].t);
       p.onclick = tapper(items[i].fn);
       row.appendChild(p);
     }
     parent.appendChild(row);
     return row;
+  }
+
+  // How many choice panels fit in the bay: 3 per row, as many rows as the space allows.
+  // Matches the .opts / .opt CSS: 0.75rem top margin, 5.75rem panels, 0.5rem between rows.
+  function panelCapacity(main) {
+    var rem = parseFloat(document.documentElement.style.fontSize) || 16;
+    var rows = Math.floor((main.clientHeight - 0.75 * rem + 0.5 * rem) / (6.25 * rem));
+    return Math.max(1, rows) * 3;
   }
 
   // Shrink text until it fits its box (same idea as fitQuote).
@@ -1521,7 +1556,8 @@ body {
     }
   }
 
-  /* ----- screen 3: Open channel (who -> what -> to whom -> confirm) ----- */
+  /* ----- screen 3: Open channel (who -> what [-> type] -> to whom -> confirm) ----- */
+  var CUSTOM = 'custom';
   function startCompose(o) {
     var crew = comms.cfg.crew;
     comms.c = {
@@ -1529,7 +1565,8 @@ body {
       origin: o.origin || 'dash',
       ack: o.ack || null,
       from: crew.length === 1 ? crew[0] : null,
-      preset: null,
+      preset: null,     // preset index, or CUSTOM for a typed message
+      text: '',         // typed draft; kept when stepping back
       to: o.to || null,
       toLocked: !!o.to,
       step: null,
@@ -1545,6 +1582,7 @@ body {
     if (!c.from) { return 'who'; }
     if (c.mode === 'ack') { return 'send'; }
     if (c.preset === null) { return 'what'; }
+    if (c.preset === CUSTOM && !cleanTyped(c.text)) { return 'type'; }
     if (!c.to) { return 'whom'; }
     return 'confirm';
   }
@@ -1589,7 +1627,7 @@ body {
         })(cfg.crew[i]) });
       }
       title = 'Who Is Transmitting?';
-      sig = pageSig(c.page, items.length, c.mode === 'ack' ? 'ACKNOWLEDGE' : 'OPEN CHANNEL');
+      sig = c.mode === 'ack' ? 'ACKNOWLEDGE' : 'OPEN CHANNEL';
     } else if (c.step === 'what') {
       for (i = 0; i < cfg.message_presets.length; i++) {
         items.push({ t: cfg.message_presets[i].text, fn: (function (idx) {
@@ -1600,8 +1638,15 @@ body {
           };
         })(i) });
       }
+      if (cfg.allow_custom_messages) {   // always the first button
+        items.unshift({ t: 'CUSTOM MESSAGE ▸', fn: function () {
+          c.preset = CUSTOM;
+          if (!c.toLocked) { c.to = null; }
+          goStep('type');
+        } });
+      }
       title = c.from + MID + 'Channel Open';
-      sig = pageSig(c.page, items.length, c.toLocked ? 'TO ' + toLabel(c.to) : 'SELECT MESSAGE');
+      sig = c.toLocked ? 'TO ' + toLabel(c.to) : 'SELECT MESSAGE';
     } else if (c.step === 'whom') {
       var names = cfg.contacts.concat(['ALL']);
       for (i = 0; i < names.length; i++) {
@@ -1610,27 +1655,108 @@ body {
         })(names[i]) });
       }
       title = 'Hail Whom?';
-      sig = pageSig(c.page, items.length, 'SELECT CHANNEL');
+      sig = 'SELECT CHANNEL';
+    } else if (c.step === 'type') {
+      renderType(c);
+      return;
     } else {   // confirm
       main = bay('Open Channel', 'CONFIRM', false);
       main.appendChild(el('div', 'cf-route', c.from + ARROW + toLabel(c.to)));
-      var text = el('div', 'cf-text', '“' + cfg.message_presets[c.preset].text + '”');
+      var custom = c.preset === CUSTOM;
+      var text = el('div', custom ? 'cf-text typed' : 'cf-text', '“' + composeText(c) + '”');
       main.appendChild(text);
       panels(main, [{ t: 'TRANSMIT', fn: transmitCompose },
                     { t: 'CHANGE', fn: function () { goStep('whom'); } }], 0);
       spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }, null, null]);
+      if (custom) { fitText(text, 2.25, 1.25); }
       return;
     }
     main = bay(title, sig, false);
-    panels(main, items, c.page);
+    var per = panelCapacity(main);   // fill the bay before paging
+    if (c.page > pageCount(items.length, per) - 1) { c.page = pageCount(items.length, per) - 1; }
+    main.sigEl.textContent = pageSig(c.page, items.length, sig, per);
+    panels(main, items, c.page, per, CHOICE_COLORS);
     spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }]
-      .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); })));
+      .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); }, per)));
+  }
+
+  // Typed text as the server will store it: one line, trimmed.
+  function cleanTyped(text) {
+    return String(text || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/^\s+|\s+$/g, '');
+  }
+  function composeText(c) {
+    return c.preset === CUSTOM ? cleanTyped(c.text) : comms.cfg.message_presets[c.preset].text;
+  }
+
+  // 3b': the typed-message field. Field and buttons sit in the top half, clear of the keyboard.
+  function renderType(c) {
+    var max = comms.cfg.max_message_length || 160;
+    var main = bay(c.from + MID + 'Custom Message', c.toLocked ? 'TO ' + toLabel(c.to) : 'COMPOSE', false);
+    var row = el('div', 'ty-row');
+    row.appendChild(el('div', 'ty-tab'));
+    var col = el('div', 'ty-col');
+    var field = document.createElement('textarea');
+    field.className = 'ty-field';
+    field.setAttribute('maxlength', String(max));
+    field.setAttribute('autocapitalize', 'sentences');
+    field.setAttribute('autocorrect', 'on');
+    field.setAttribute('spellcheck', 'true');
+    field.value = c.text;
+    col.appendChild(field);
+    var count = el('div', 'ty-count');
+    col.appendChild(count);
+    row.appendChild(col);
+
+    var btns = el('div', 'ty-btns');
+    var send = el('div', 'opt a', 'TRANSMIT');
+    var abort = el('div', 'opt tap o', 'ABORT');
+    btns.appendChild(send);
+    btns.appendChild(abort);
+    row.appendChild(btns);
+    main.appendChild(row);
+
+    function update() {
+      var v = field.value.replace(/[\r\n]+/g, ' ');   // one line, even when pasted
+      if (v.length > max) { v = v.substring(0, max); }
+      if (v !== field.value) { field.value = v; }
+      c.text = v;
+      count.textContent = v.length + ' / ' + max;
+      count.className = v.length >= max ? 'ty-count full' : 'ty-count';
+      send.className = cleanTyped(v) ? 'opt tap a' : 'opt off a';
+    }
+    function done() {
+      update();
+      if (!cleanTyped(c.text)) { return; }
+      field.blur();
+      window.scrollTo(0, 0);
+      if (c.to) { transmitCompose(); } else { goStep('whom'); }
+    }
+    field.oninput = update;
+    field.onkeydown = function (e) {
+      if ((e.keyCode || e.which) === 13) {   // Return closes the keyboard; TRANSMIT is a separate tap
+        if (e.preventDefault) { e.preventDefault(); }
+        field.blur();
+      }
+    };
+    field.onblur = function () { setTimeout(function () { window.scrollTo(0, 0); }, 0); };
+    send.onclick = tapper(function () { if (cleanTyped(c.text)) { done(); } });
+    abort.onclick = tapper(function () { field.blur(); abortCompose(); });
+    update();
+
+    spine([{ t: 'ABORT', fn: function () { field.blur(); abortCompose(); } },
+           { t: 'RETURN', fn: function () { field.blur(); stepBack(); } }, null, null]);
+    try { field.focus(); } catch (e) {}   // iOS opens the keyboard only if this runs inside the tap
   }
 
   function transmitCompose() {
     var c = comms.c;
     if (c.mode === 'ack') {
       transmit({ ack: c.ack.id, from_crew: c.from }, { from: c.from, to: c.ack.from, text: 'GOT IT' });
+      return;
+    }
+    if (c.preset === CUSTOM) {
+      var typed = cleanTyped(c.text);
+      transmit({ from_crew: c.from, text: typed, to: c.to }, { from: c.from, to: c.to, text: typed });
       return;
     }
     var preset = comms.cfg.message_presets[c.preset];
@@ -1759,6 +1885,8 @@ body {
     });
     document.addEventListener('touchstart', noteTouch, false);
     document.addEventListener('mousedown', noteTouch, false);
+    document.addEventListener('keydown', noteTouch, false);
+    document.addEventListener('input', noteTouch, false);
     setInterval(housekeeping, 5000);
     enableSounds(cfg);
     loadMessages();

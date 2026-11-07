@@ -952,7 +952,7 @@ class Wizard(Setup):
 
     def section_presets(self):
         self.out("\n== Preset messages ==")
-        self.env_note(("message_presets", "quick_replies", "padd_sender_name"))
+        self.env_note(("message_presets", "allow_custom_messages", "quick_replies", "padd_sender_name"))
         self.out("These are the messages the kids can send from the PADD (6 to a page). Each one can\n"
                  "go to a default recipient, or ask HAIL WHOM? every time.")
         original = clean_presets(self.current("message_presets"))
@@ -991,6 +991,9 @@ class Wizard(Setup):
                         ("m", "[M]ove", self._move), ("r", "[R]emove", remove)])
         if presets != original:
             self.set("message_presets", presets)
+        self.set("allow_custom_messages", self.yes(
+            "\nAlso let the crew type their own messages (up to %d characters)?"
+            % self.current("max_message_length"), bool(self.current("allow_custom_messages"))))
         self._quick_replies()
         name = self.ask_text("\nHow the PADD signs its messages", str(self.current("padd_sender_name") or ""))
         self.set("padd_sender_name", name.upper()[:20])
