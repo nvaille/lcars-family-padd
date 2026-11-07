@@ -496,11 +496,13 @@ class HTTPTests(Base):
 
     def test_home_screen_icon_and_its_aliases(self):
         for path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png",
-                     "/apple-touch-icon-152x152.png", "/apple-touch-icon-76x76-precomposed.png"):
+                     "/apple-touch-icon-152x152.png", "/apple-touch-icon-76x76-precomposed.png",
+                     "/favicon.ico"):
             status, _, resp = self.request("GET", path)
             self.assertEqual((status, resp.getheader("Content-Type")), (200, "image/png"), path)
         for path in ("/apple-touch-icon.png.bak", "/apple-touch-icon-../config.json",
-                     "/apple-touch-icon-x.png", "/apple-touch-icon-1x1/../../config.json"):
+                     "/apple-touch-icon-x.png", "/apple-touch-icon-1x1/../../config.json",
+                     "/favicon.ico/../config.json"):
             self.assertEqual(self.request("GET", path)[0], 404, path)
 
     def test_page_is_revalidated_but_api_is_not_stored(self):
