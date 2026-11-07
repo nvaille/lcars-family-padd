@@ -475,6 +475,12 @@ class HTTPTests(Base):
         for path in ("/messages.json", "/config.json", "/config.json.bak", "/server.py", "/.gitignore"):
             self.assertEqual(self.request("GET", path)[0], 404, path)
 
+    def test_page_is_revalidated_but_api_is_not_stored(self):
+        status, _, resp = self.request("GET", "/")
+        self.assertEqual((status, resp.getheader("Cache-Control")), (200, "no-cache"))
+        _, _, resp = self.request("GET", "/api/config")
+        self.assertEqual(resp.getheader("Cache-Control"), "no-store")
+
     def test_ip_allowlist(self):
         self.svc.allowed_ips = {"10.9.9.9"}
 

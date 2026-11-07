@@ -1200,7 +1200,13 @@ class LCARSHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def end_headers(self):
+        if getattr(self, "_revalidate", False):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def do_GET(self):
+        self._revalidate = False
         path = self.path.split("?", 1)[0]
 
         if path == "/api/events":
@@ -1249,6 +1255,8 @@ class LCARSHandler(SimpleHTTPRequestHandler):
             if name.startswith("."):
                 self.send_error(404)
                 return
+            # Make the iPad re-check the page on every load, so it never flashes a stale copy.
+            self._revalidate = True
             super().do_GET()
 
         else:
