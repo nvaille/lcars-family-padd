@@ -4,7 +4,9 @@ LCARS Family PADD - setup wizard (terminal). Standard library only.
 
   python3 configure.py             guided setup: every section below, one after another,
                                    with a single save at the end
-  python3 configure.py location    weather location: look up a city, pick the right match
+  python3 configure.py location    weather location: look up a city, pick the right match,
+                                   then the nearest tide station (below)
+  python3 configure.py tides       tide station for the CETACEAN OPS screen (US coasts, NOAA)
   python3 configure.py calendar    calendar feed (.ics / webcal) address, checked before saving
   python3 configure.py messaging   set up Telegram messaging: bot token, pair contacts,
                                    optional family group, crew names, test transmission
@@ -30,11 +32,13 @@ import getpass
 import io
 import ipaddress
 import json
+import math
 import os
 import re
 import shutil
 import socket
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -48,7 +52,10 @@ RESERVED_NAMES = ("ALL", "ALL HANDS")
 TEST_TEXT = "LCARS PADD ONLINE"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?"
 QUIET_RE = re.compile(r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$")
-SECTIONS = ("location", "calendar", "messaging", "contacts", "crew", "presets", "sounds", "security")
+TIDE_STATIONS_URL = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions"
+TIDE_NEAR_MILES = 60
+TIDE_CHOICES = 5
+SECTIONS = ("location", "tides", "calendar", "messaging", "contacts", "crew", "presets", "sounds", "security")
 CUE_HELP = {
     "tap": "any button press",
     "incoming": "a new message arrives",
@@ -312,6 +319,10 @@ class Setup(Prompts):
     # ----- location -----
 
     def section_location(self):
+        self._pick_location()
+        self.section_tides(direct=False)
+
+    def _pick_location(self):
         self.out("\n== Location (for the weather panel) ==")
         self.env_note(("latitude", "longitude", "location_name"))
         lat = _number(self.current("latitude"), float, 0.0)
@@ -369,6 +380,109 @@ class Setup(Prompts):
                                                    for f in ("admin1", "country", "country_code"))]
             results = preferred or results
         return results[:8]
+
+    # ----- tides (the CETACEAN OPS screen) -----
+
+    def section_tides(self, direct=True):
+        """direct=False (after the location step): only ask if there's a station to offer or keep."""
+        self.out("\n== Tides (the CETACEAN OPS screen) ==")
+        self.out("Tide predictions come from NOAA, so this works on US coasts only.")
+        self.env_note(("tide_station_id", "tide_units"))
+        cur = str(self.current("tide_station_id") or "").strip()
+        self.out("Now: station %s." % cur if cur else "Now: off (no tide station set).")
+        lat = _number(self.current("latitude"), float, 0.0)
+        lon = _number(self.current("longitude"), float, 0.0)
+        stations = None
+        if lat or lon:
+            stations = self._near_stations(lat, lon)
+        else:
+            self.out("Set the location first to look up nearby stations.")
+        if stations:
+            self.out("Nearest NOAA tide stations:")
+            for i, st in enumerate(stations):
+                self.out("  %d. %s (%s)  %.1f miles" % (i + 1, st["label"], st["id"], st["miles"]))
+        elif stations is not None:
+            self.out("No NOAA tide stations within %d miles of here." % TIDE_NEAR_MILES)
+        if not stations and not cur and not direct:
+            self.out("The CETACEAN OPS screen stays off. To type a station ID: python3 configure.py tides")
+            return
+        choices = (["Pick a number"] if stations else []) + ["M to type a station ID"]
+        if cur:
+            choices.append("O to turn the tide screen off")
+        prompt = "%s (Enter %s): " % (", ".join(choices), "keeps %s" % cur if cur else "skips")
+        while True:
+            answer = self.ask(prompt[0].upper() + prompt[1:]).strip()
+            if not answer:
+                station = cur
+                break
+            if answer.lower() == "o" and cur:
+                station = ""
+                break
+            if answer.lower() == "m":
+                station = self._manual_station()
+                if station is None:
+                    continue
+                break
+            if stations and answer.isdigit() and 1 <= int(answer) <= len(stations):
+                station = stations[int(answer) - 1]["id"]
+                break
+            self.out("  Type one of the choices above.")
+        self.set("tide_station_id", station)
+        if not station:
+            return
+        units = "meters" if self.current("tide_units") == "meters" else "feet"
+        while True:
+            answer = self.ask("Tide heights in [F]eet or [M]eters [%s]: " % units).strip().lower()
+            if answer in ("", "f", "feet", "m", "meters", "metres"):
+                break
+            self.out("  Type F or M.")
+        if answer:
+            units = "feet" if answer.startswith("f") else "meters"
+        self.set("tide_units", units)
+
+    def _near_stations(self, lat, lon):
+        """The closest NOAA tide stations, or None if the list couldn't be fetched."""
+        try:
+            data = json.loads(self.fetch(TIDE_STATIONS_URL))
+        except Exception as e:
+            self.out("  Couldn't get NOAA's tide station list: %s%s" % (e, tls_hint(e)))
+            return None
+        found = []
+        for st in (data.get("stations") if isinstance(data, dict) else None) or []:
+            try:
+                sid = str(st["id"]).strip()
+                miles = distance_miles(lat, lon, float(st["lat"]), float(st["lng"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if server.TIDE_STATION_RE.match(sid) and miles <= TIDE_NEAR_MILES:
+                found.append({"id": sid, "label": station_label(st), "miles": miles})
+        found.sort(key=lambda st: st["miles"])
+        return found[:TIDE_CHOICES]
+
+    def _manual_station(self):
+        sid = self.ask("NOAA station ID, e.g. 9414290 (find one at tidesandcurrents.noaa.gov; "
+                       "Enter to cancel): ").strip()
+        if not sid:
+            return None
+        if not server.TIDE_STATION_RE.match(sid):
+            self.out("  Station IDs are letters and digits, like 9414290.")
+            return None
+        try:
+            name = server.parse_station_name(self.fetch(server.TIDE_STATION_API % sid))
+        except urllib.error.HTTPError as e:
+            name = "" if e.code == 404 else None
+            if name is None:
+                self.out("  Couldn't check that station: %s" % e)
+        except Exception as e:
+            name = None
+            self.out("  Couldn't check that station: %s%s" % (e, tls_hint(e)))
+        if name is None:
+            return sid if self.yes("Use it anyway?") else None
+        if not name:
+            self.out("  NOAA doesn't list a station %s." % sid)
+            return None
+        self.out("  Station %s: %s" % (sid, name))
+        return sid
 
     def _manual_location(self, lat, lon):
         self.out("Tip: find coordinates by right-clicking a spot in Google Maps.")
@@ -563,6 +677,20 @@ class Setup(Prompts):
         rate = _number(self.current("send_rate_limit_per_hour"), int, 10)
         self.set("send_rate_limit_per_hour", self.ask_number(
             "Most messages the PADD may send per hour (0 = no limit)", max(0, rate), 0, 1000))
+
+
+def distance_miles(lat1, lon1, lat2, lon2):
+    """Great-circle distance (haversine)."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 3958.8 * 2 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def station_label(st):
+    name = str(st.get("name") or "").strip().upper()
+    state = str(st.get("state") or "").strip().upper()
+    return "%s, %s" % (name, state) if name and state else name or "(unnamed)"
 
 
 def place_label(r):

@@ -6,6 +6,7 @@ Serves index.html and two JSON endpoints used by the dashboard:
   /api/weather  Open-Meteo forecast for the configured coordinates
   /api/config   non-secret display settings (e.g. location label)
   /api/messages family text messages via Telegram (only when messaging is configured)
+  /api/tides    NOAA tide predictions for the CETACEAN OPS screen (only when a station is set)
 
 Settings come from config.json (next to this file, or the path in LCARS_CONFIG),
 with environment variables taking precedence. See config.example.json.
@@ -48,6 +49,8 @@ DEFAULTS = {
     "lookahead_days": 60,        # how far ahead recurring events are expanded
     "timed_default_minutes": 60, # assumed length of a timed event with no DTEND/DURATION
     "nightly_reload": True,      # kiosk reloads itself at 3 a.m. to keep old Safari stable
+    "tide_station_id": "",       # NOAA tide station (US coasts); "" = no CETACEAN OPS screen
+    "tide_units": "feet",        # feet | meters
 
     # --- text messages (see docs/text-messages-plan.md) ---
     "messaging_provider": "none",      # none | telegram  (twilio: future adapter)
@@ -91,6 +94,8 @@ ENV_VARS = {
     "lookahead_days": "LCARS_LOOKAHEAD_DAYS",
     "timed_default_minutes": "LCARS_TIMED_DEFAULT_MINUTES",
     "nightly_reload": "LCARS_NIGHTLY_RELOAD",
+    "tide_station_id": "LCARS_TIDE_STATION",
+    "tide_units": "LCARS_TIDE_UNITS",
     "messaging_provider": "LCARS_MESSAGING_PROVIDER",
     "telegram_bot_token": "LCARS_TELEGRAM_TOKEN",
     "telegram_group_chat_id": "LCARS_TELEGRAM_GROUP_ID",
@@ -114,7 +119,7 @@ ENV_VARS = {
 }
 
 # Env vars where an empty string is a real value (e.g. LCARS_QUIET_HOURS="" turns quiet hours off).
-EMPTY_ENV_ALLOWED = ("quiet_hours", "telegram_group_chat_id", "kiosk_allowed_ips")
+EMPTY_ENV_ALLOWED = ("quiet_hours", "telegram_group_chat_id", "kiosk_allowed_ips", "tide_station_id")
 
 SOUND_EXTENSIONS = (".mp3", ".m4a", ".wav")
 SOUND_CUES = ("tap", "incoming", "transmit", "sent", "ack", "fail", "open", "lcars")
@@ -241,6 +246,28 @@ def normalize_messaging(cfg, warn=print):
     return cfg
 
 
+TIDE_STATION_RE = re.compile(r"^[A-Za-z0-9]{5,12}$")
+
+
+def normalize_tides(cfg, warn=print):
+    """Clean up the tide settings in place."""
+    station = str(cfg["tide_station_id"] or "").strip()
+    if station and not TIDE_STATION_RE.match(station):
+        warn("tide_station_id %r doesn't look like a NOAA station ID; the tide screen is off." % station)
+        station = ""
+    cfg["tide_station_id"] = station
+    units = str(cfg["tide_units"] or "").strip().lower()
+    if units in ("meters", "metres", "meter", "m", "metric"):
+        units = "meters"
+    elif units not in ("feet", "foot", "ft", "english", ""):
+        warn("tide_units %r is not feet or meters; using feet." % cfg["tide_units"])
+        units = "feet"
+    else:
+        units = "feet"
+    cfg["tide_units"] = units
+    return cfg
+
+
 def load_config():
     cfg = dict(DEFAULTS)
     path = config_path()
@@ -262,6 +289,7 @@ def load_config():
     if cfg["ics_feed_url"].startswith("webcal://"):
         cfg["ics_feed_url"] = "https://" + cfg["ics_feed_url"][len("webcal://"):]
     normalize_messaging(cfg)
+    normalize_tides(cfg)
     return cfg
 
 
@@ -274,7 +302,7 @@ WEATHER_URL = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode
     "longitude": CONFIG["longitude"],
     "current_weather": "true",
     "hourly": "temperature_2m,precipitation_probability,rain",
-    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset",
     "timezone": "auto",
 }, safe=",")
 
@@ -1163,6 +1191,7 @@ def public_config(cfg, messaging_enabled):
         "location_name": cfg["location_name"],
         "nightly_reload": cfg["nightly_reload"],
         "messaging_enabled": bool(messaging_enabled),
+        "tides_enabled": bool(cfg.get("tide_station_id")),
         "sounds_enabled": cfg["sounds_enabled"],
         "sound_volume": cfg["sound_volume"],
         "tap_sounds": cfg["tap_sounds"],
@@ -1184,6 +1213,151 @@ def public_config(cfg, messaging_enabled):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Tides (the CETACEAN OPS screen): NOAA CO-OPS predictions, no API key needed.
+# Only the high/low times are fetched (every NOAA station has those); the kiosk
+# draws the curve between them. A good copy is kept, so a short outage doesn't
+# blank the screen (predictions are good for days).
+# ---------------------------------------------------------------------------
+
+TIDES_API = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?"
+TIDE_STATION_API = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/%s.json"
+TIDE_REFRESH_SECONDS = 6 * 3600
+TIDE_RETRY_SECONDS = 10 * 60
+TIDE_DAYS_BACK = 1     # fetch from yesterday (UTC midnight) ...
+TIDE_HOURS = 5 * 24    # ... for 5 days, so the kiosk's window always has extremes on both sides
+
+
+class TideError(Exception):
+    pass
+
+
+def http_get_text(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="ignore")
+
+
+def tide_url(station, units, now):
+    begin = datetime.fromtimestamp(now, timezone.utc).date() - timedelta(days=TIDE_DAYS_BACK)
+    return TIDES_API + urllib.parse.urlencode({
+        "product": "predictions",
+        "application": "lcars_family_padd",
+        "station": station,
+        "begin_date": begin.strftime("%Y%m%d"),
+        "range": TIDE_HOURS,
+        "datum": "MLLW",
+        "time_zone": "gmt",
+        "interval": "hilo",
+        "units": "metric" if units == "meters" else "english",
+        "format": "json",
+    })
+
+
+def parse_tides(text):
+    """NOAA hilo JSON -> [{"t": epoch seconds, "v": height, "type": "H"|"L"}], oldest first."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise TideError("NOAA sent something that isn't JSON")
+    if not isinstance(data, dict):
+        raise TideError("unexpected reply from NOAA")
+    if "error" in data:
+        err = data["error"]
+        raise TideError(str(err.get("message", err) if isinstance(err, dict) else err).strip())
+    out = []
+    for p in data.get("predictions") or []:
+        try:
+            when = datetime.strptime(p["t"], "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+            kind = str(p.get("type", "")).upper()
+            if kind not in ("H", "L"):
+                continue
+            out.append({"t": int(when.timestamp()), "v": round(float(p["v"]), 2), "type": kind})
+        except (KeyError, TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: x["t"])
+    if len(out) < 2:
+        raise TideError("NOAA returned no tide predictions for this station")
+    return out
+
+
+def parse_station_name(text):
+    """NOAA station metadata JSON -> 'SAN FRANCISCO, CA' (or '' if missing)."""
+    try:
+        st = (json.loads(text).get("stations") or [{}])[0]
+    except (ValueError, AttributeError, IndexError):
+        return ""
+    if not isinstance(st, dict):
+        return ""
+    name = str(st.get("name") or "").strip().upper()
+    state = str(st.get("state") or "").strip().upper()
+    return "%s, %s" % (name, state) if name and state else name
+
+
+class TideService(object):
+    """Fetches and keeps tide predictions. fetch(url) -> text is swappable for tests."""
+
+    def __init__(self, station, units, fetch=http_get_text, clock=_time.time, log=print):
+        self.station = station
+        self.units = units
+        self.fetch = fetch
+        self.clock = clock
+        self.log = log
+        self.tides = None
+        self.name = ""
+        self.fetched_at = 0
+        self.tried_at = None
+        self.stale = False
+        self._lock = threading.Lock()
+
+    def _due(self, now):
+        if self.tried_at is None:
+            return True
+        if self.stale or self.tides is None:
+            return now - self.tried_at >= TIDE_RETRY_SECONDS
+        return now - self.fetched_at >= TIDE_REFRESH_SECONDS
+
+    def refresh(self, now):
+        self.tried_at = now
+        try:
+            self.tides = parse_tides(self.fetch(tide_url(self.station, self.units, now)))
+            self.fetched_at = now
+            self.stale = False
+        except Exception as e:  # network trouble or a NOAA error: keep the last good copy
+            self.stale = True
+            self.log("Tides error: %s" % e)
+            return
+        if not self.name:
+            try:
+                self.name = parse_station_name(self.fetch(TIDE_STATION_API % urllib.parse.quote(self.station)))
+            except Exception:
+                pass  # the name is only a label; try again at the next refresh
+
+    def snapshot(self):
+        with self._lock:
+            now = self.clock()
+            if self._due(now):
+                self.refresh(now)
+            if self.tides is None:
+                raise TideError("no tide data yet")
+            return {
+                "enabled": True,
+                "station": self.station,
+                "name": self.name,
+                "units": "M" if self.units == "meters" else "FT",
+                "datum": "MLLW",
+                "updated": int(self.fetched_at),
+                "stale": self.stale,
+                "tides": list(self.tides),
+            }
+
+
+def build_tides(cfg):
+    if not cfg.get("tide_station_id"):
+        return None
+    return TideService(cfg["tide_station_id"], cfg["tide_units"])
+
+
 def build_messaging(cfg):
     """Create the messaging service if a provider is configured, else None."""
     if cfg["messaging_provider"] != "telegram":
@@ -1193,6 +1367,7 @@ def build_messaging(cfg):
 
 
 MESSAGING = None  # set in __main__ (or by tests)
+TIDES = None      # set in __main__ (or by tests)
 
 
 # ---------------------------------------------------------------------------
@@ -1256,6 +1431,15 @@ class LCARSHandler(SimpleHTTPRequestHandler):
                 self.send_json(403, {"error": "forbidden"})
             else:
                 self.send_json(200, MESSAGING.snapshot())
+
+        elif path == "/api/tides":
+            if TIDES is None:
+                self.send_json(200, {"enabled": False})
+            else:
+                try:
+                    self.send_json(200, TIDES.snapshot())
+                except TideError:
+                    self.send_json(502, {"enabled": True, "error": "tide data unavailable"})
 
         elif path.startswith("/sounds/"):
             self.send_sound(urllib.parse.unquote(path[len("/sounds/"):]))
@@ -1379,6 +1563,8 @@ def make_server(port, directory=BASE_DIR):
 
 if __name__ == "__main__":
     MESSAGING = build_messaging(CONFIG)
+    TIDES = build_tides(CONFIG)
+    print("Tides: station %s." % CONFIG["tide_station_id"] if TIDES else "Tides: off.")
     for cue, name in sorted(CONFIG["sound_files"].items()):
         if not os.path.isfile(os.path.join(SOUNDS_DIR, name)):
             print("Sound file for %r not found: sounds/%s (the built-in tone is used)." % (cue, name))

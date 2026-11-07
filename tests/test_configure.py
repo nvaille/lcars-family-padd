@@ -1,11 +1,13 @@
 """Tests for configure.py (the setup wizard). No real network calls: a fake Telegram is used."""
 
+import io
 import json
 import os
 import stat
 import sys
 import tempfile
 import unittest
+import urllib.error
 
 _TMP = tempfile.mkdtemp(prefix="lcars-wiz-")
 for _var in list(os.environ):
@@ -54,6 +56,16 @@ def private(sender, name, text="/start"):
 def tap_test_button(bot):
     data = [b for b in bot.sent if b[2]][-1][2][0][1]  # first button of the last test message
     return [{"type": "callback", "sender": "222", "chat": "222", "data": data, "callback_id": "cb"}]
+
+
+NO_STATIONS = json.dumps({"stations": []})
+STATIONS = json.dumps({"stations": [
+    {"id": "9414290", "name": "San Francisco", "state": "CA", "lat": 37.8063, "lng": -122.4659},
+    {"id": "9414750", "name": "Alameda", "state": "CA", "lat": 37.7717, "lng": -122.3},
+    {"id": "9999999", "name": "Far Away", "state": "WA", "lat": 47.6, "lng": -122.3},
+    {"id": "../x", "name": "Bad ID", "state": "CA", "lat": 37.80, "lng": -122.45},
+    {"id": "9414000", "name": "No Coordinates", "state": "CA"},
+]})
 
 
 class Script(object):
@@ -232,7 +244,8 @@ class SectionTests(unittest.TestCase):
         if existing is not None:
             with open(self.path, "w") as fh:
                 json.dump(existing, fh)
-        responses = responses or {}
+        responses = dict(responses or {})
+        responses.setdefault(configure.TIDE_STATIONS_URL, NO_STATIONS)  # an inland town by default
 
         def fetch(url):
             self.fetched.append(url)
@@ -296,6 +309,64 @@ class SectionTests(unittest.TestCase):
         self.assertEqual(self.run_section("location", [""], existing=existing), 0)
         self.assertIn("No changes", self.text())
         self.assertFalse(os.path.exists(self.path + ".bak"))
+
+    # ----- tides -----
+
+    COAST = {"latitude": 37.79, "longitude": -122.44, "location_name": "San Francisco, CA"}
+
+    def test_tides_pick_nearest_station(self):
+        answers = ["2", "", ""]  # second-nearest station, keep feet, save
+        code = self.run_section("tides", answers, existing=self.COAST,
+                                responses={configure.TIDE_STATIONS_URL: STATIONS})
+        self.assertEqual(code, 0, self.text())
+        self.assertIn("1. SAN FRANCISCO, CA (9414290)  1.8 miles", self.text())
+        self.assertIn("2. ALAMEDA, CA (9414750)  7.7 miles", self.text())
+        self.assertNotIn("FAR AWAY", self.text())  # over 60 miles
+        self.assertNotIn("BAD ID", self.text())
+        cfg = self.saved()
+        self.assertEqual(cfg["tide_station_id"], "9414750")
+        self.assertNotIn("tide_units", cfg)  # feet is the default, so nothing is written
+
+    def test_location_step_offers_tides(self):
+        answers = ["", "2", "m", ""]  # keep location, second station, meters, save
+        code = self.run_section("location", answers, existing=self.COAST,
+                                responses={configure.TIDE_STATIONS_URL: STATIONS})
+        self.assertEqual(code, 0, self.text())
+        cfg = self.saved()
+        self.assertEqual((cfg["tide_station_id"], cfg["tide_units"]), ("9414750", "meters"))
+
+    def test_location_step_inland_asks_nothing(self):
+        existing = {"latitude": 39.8, "longitude": -89.6, "location_name": "Springfield"}
+        self.assertEqual(self.run_section("location", [""], existing=existing,
+                                          responses={configure.TIDE_STATIONS_URL: STATIONS}), 0)
+        self.assertIn("No NOAA tide stations within 60 miles", self.text())
+        self.assertIn("stays off", self.text())
+
+    def test_tides_manual_id(self):
+        missing = urllib.error.HTTPError("url", 404, "Not Found", None, io.BytesIO(b""))
+        self.addCleanup(missing.close)
+        responses = {configure.TIDE_STATIONS_URL: OSError("network is unreachable"),
+                     server.TIDE_STATION_API % "1234567": missing,
+                     server.TIDE_STATION_API % "9414290": json.dumps(
+                         {"stations": [{"id": "9414290", "name": "San Francisco", "state": "CA"}]})}
+        answers = ["m", "../etc", "m", "1234567", "m", "9414290", "", ""]
+        code = self.run_section("tides", answers, existing=self.COAST, responses=responses)
+        self.assertEqual(code, 0, self.text())
+        self.assertIn("Couldn't get NOAA's tide station list", self.text())
+        self.assertIn("Station IDs are letters and digits", self.text())
+        self.assertIn("NOAA doesn't list a station 1234567", self.text())
+        self.assertIn("Station 9414290: SAN FRANCISCO, CA", self.text())
+        self.assertEqual(self.saved()["tide_station_id"], "9414290")
+
+    def test_tides_turn_off_and_keep(self):
+        existing = dict(self.COAST, tide_station_id="9414750")
+        self.assertEqual(self.run_section("tides", ["", ""], existing=existing,
+                                          responses={configure.TIDE_STATIONS_URL: STATIONS}), 0)
+        self.assertIn("No changes", self.text())
+        self.output = []
+        self.assertEqual(self.run_section("tides", ["o", ""], existing=existing,
+                                          responses={configure.TIDE_STATIONS_URL: STATIONS}), 0)
+        self.assertEqual(self.saved()["tide_station_id"], "")
 
     # ----- calendar -----
 
@@ -629,6 +700,8 @@ class TourTests(unittest.TestCase):
         def fetch(url):
             if url.startswith(configure.GEOCODE_URL):
                 return GEO
+            if url == configure.TIDE_STATIONS_URL:
+                return NO_STATIONS
             raise AssertionError("unexpected fetch")
         ask = Script(answers)
         code = configure.run_section(self.path, "tour", ask=ask, secret=Script(secrets), out=self.output.append,

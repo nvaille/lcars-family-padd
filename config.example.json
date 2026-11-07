@@ -8,6 +8,8 @@
   "lookahead_days": 60,
   "timed_default_minutes": 60,
   "nightly_reload": true,
+  "tide_station_id": "9414290",
+  "tide_units": "feet",
 
   "messaging_provider": "none",
   "telegram_bot_token": "PASTE_YOUR_BOT_TOKEN_HERE",
