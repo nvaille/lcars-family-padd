@@ -126,6 +126,7 @@ body {
 .o { background: #ff6600; }
 .a { background: #ff9900; }
 .c { background: #ffcc99; }
+.bl { background: #66ccff; }
 
 /* hollow slot where the two conduits split apart */
 .cut { position: absolute; left: 0; width: 34%; height: 50%; background: #000; }
@@ -1221,6 +1222,7 @@ body {
   var SENT_HOLD_MS = 3000;
   var PER_PAGE = 6;
   var SPINE_COLORS = ['a', 'c', 'o', 'a'];
+  var CHOICE_COLORS = ['bl', 'c', 'a', 'o'];   // compose choice panels: blue joins the rotation
   var SPINE_CODES = ['04-041969', '05-1701D', '06-071984', '07-2409'];
   var MID = ' · ', ARROW = ' → ';
 
@@ -1429,11 +1431,11 @@ body {
   }
 
   // Choice panels, `per` (default PER_PAGE) at a time. items: [{t: label, fn: handler}]
-  function panels(parent, items, page, per) {
+  function panels(parent, items, page, per, colors) {
     per = per || PER_PAGE;
     var row = el('div', 'opts');
     for (var i = page * per; i < items.length && i < (page + 1) * per; i++) {
-      var p = el('div', 'opt tap ' + SPINE_COLORS[(i + 1) % 4], items[i].t);
+      var p = el('div', 'opt tap ' + (colors ? colors[i % colors.length] : SPINE_COLORS[(i + 1) % 4]), items[i].t);
       p.onclick = tapper(items[i].fn);
       row.appendChild(p);
     }
@@ -1673,7 +1675,7 @@ body {
     var per = panelCapacity(main);   // fill the bay before paging
     if (c.page > pageCount(items.length, per) - 1) { c.page = pageCount(items.length, per) - 1; }
     main.sigEl.textContent = pageSig(c.page, items.length, sig, per);
-    panels(main, items, c.page, per);
+    panels(main, items, c.page, per, CHOICE_COLORS);
     spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }]
       .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); }, per)));
   }
