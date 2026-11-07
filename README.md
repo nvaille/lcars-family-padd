@@ -26,7 +26,7 @@ python3 server.py
 
 The setup wizard asks one question at a time and saves to `config.json`. You can also copy `config.example.json` to `config.json` and edit it by hand.
 
-Open `http://<server-ip>:8000` on the kiosk. On iPad, use **Share → Add to Home Screen** for full-screen mode.
+Open `http://<server-ip>:8000` on the kiosk. On iPad, use **Share → Add to Home Screen** for full-screen mode (it gets an LCARS icon, `apple-touch-icon.png`).
 
 ## Configuration
 
