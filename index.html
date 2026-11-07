@@ -302,7 +302,8 @@ body {
 .spb { flex: 1 1 0; min-height: 3rem; margin-top: 0.375rem; font-size: 1.25rem; }
 .spb.off { color: rgba(0,0,0,0.3); }
 .spb.code { font-size: 1rem; }
-.sp-4.tap, .sp-5.tap { font-size: 1.25rem; }
+.sp-4.tap, .sp-5.tap, .sp-6.tap { font-size: 1.25rem; }
+.spb.sel { background: #66ccff; }
 .tap { cursor: pointer; }
 .tap:active { opacity: 0.6; }
 @-webkit-keyframes alert { 0% { background-color: #cc4444; } 50% { background-color: #ff6600; } }
@@ -379,6 +380,27 @@ body {
 .rs-big { flex: 0 0 auto; font-size: 3rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; color: #ffcc99; margin-top: 1.25rem; }
 .rs-big.fail { color: #cc4444; }
 .rs-sub { flex: 0 0 auto; font-size: 1.5rem; letter-spacing: 0.06em; color: #66ccff; margin-top: 0.75rem; }
+/* ===================================================================
+   CETACEAN OPS (tides): heading, station line, canvas curve, next tides.
+   =================================================================== */
+.hd-td h2 { color: #66ccff; }  .hd-td .run { background: #66ccff; }
+.td-sub { flex: 0 0 auto; font-size: 1.125rem; letter-spacing: 0.1em; color: #ff9900; margin-top: 0.4rem;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-sub b { color: #66ccff; font-weight: 700; }
+.td-plot { flex: 1 1 auto; min-height: 0; position: relative; margin-top: 0.5rem; overflow: hidden; }
+.td-plot canvas { position: absolute; top: 0; left: 0; }
+.td-next { flex: 0 0 auto; display: flex; flex-direction: row; margin-top: 0.6rem; }
+.td-x { flex: 1 1 0; min-width: 0; height: 4.25rem; display: flex; flex-direction: row; }
+.td-x + .td-x { margin-left: 0.5rem; }
+.td-tab { flex: 0 0 0.75rem; margin-right: 0.6rem; background: #66ccff; }
+.td-x.hi .td-tab { background: #ff9900; }
+.td-x.minus .td-tab { background: #ff6600; }
+.td-txt { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+.td-k { font-size: 0.9375rem; letter-spacing: 0.1em; color: #ff9900; }
+.td-x.minus .td-k { color: #ff6600; }
+.td-v { font-size: 1.625rem; font-weight: 700; color: #ffcc99; line-height: 1.1; }
+.td-v small { font-size: 1rem; font-weight: 400; color: #ff9900; margin-left: 0.3rem; }
+.td-h { font-size: 1.0625rem; color: #66ccff; letter-spacing: 0.06em; }
 .rs-dc { flex: 0 0 auto; font-size: 1.25rem; line-height: 1.55; color: #ff9900; letter-spacing: 0.35em;
          margin-top: 1rem; white-space: nowrap; overflow: hidden; }
 </style>
@@ -425,7 +447,7 @@ body {
       <div class="spnav" id="sp-dash">
         <div class="sp sp-4 sp-bottom" id="sp-hail">04-041969</div>
         <div class="sp sp-5 sp-bottom" id="sp-comms">05-1701D</div>
-        <div class="sp sp-6 sp-bottom">06-071984</div>
+        <div class="sp sp-6 sp-bottom" id="sp-tides">06-071984</div>
       </div>
       <div class="spnav" id="sp-cm" style="display:none"></div>
     </div>
@@ -480,7 +502,7 @@ body {
         </div>
 
       </div>
-      <!-- COMMS BAY (communications log, transmission detail, open channel) -->
+      <!-- COMMS BAY (communications log, transmission detail, open channel; also CETACEAN OPS) -->
       <div class="bot-body cm" id="comms" style="display:none"></div>
     </div>
   </div>
@@ -762,6 +784,7 @@ body {
     var du = d.daily_units || {};
     var hourly = d.hourly || {};
     var daily = d.daily || {};
+    noteSun(arr(daily, 'sunrise'), arr(daily, 'sunset'));
 
     // current
     var t = toF(cw.temperature, cu.temperature);
@@ -1387,6 +1410,7 @@ body {
     else if (comms.screen === 'detail') { renderDetail(); }
     else if (comms.screen === 'compose') { renderCompose(); }
     else if (comms.screen === 'result') { renderResult(); }
+    else if (comms.screen === 'tides') { renderTides(); }
   }
 
   function tapper(fn) {
@@ -1406,6 +1430,7 @@ body {
     for (var i = 0; i < 4; i++) {
       var b = buttons[i];
       var seg = el('div', 'sp sp-bottom spb ' + SPINE_COLORS[i]);
+      if (b && b.sel) { seg.className += ' sel'; }
       if (b && b.fn) {
         seg.textContent = b.t;
         seg.className += ' tap';
@@ -1433,10 +1458,10 @@ body {
   }
 
   // Clears the comms bay, adds an LCARS heading, returns the main area.
-  function bay(title, sig, lost) {
+  function bay(title, sig, lost, hdClass) {
     var box = $('comms');
     clear(box);
-    var hd = el('div', 'hd hd-cm');
+    var hd = el('div', 'hd ' + (hdClass || 'hd-cm'));
     hd.appendChild(el('h2', null, title));
     hd.appendChild(el('div', 'run'));
     var sigEl = el('span', lost ? 'sig lost' : 'sig', sig);
@@ -1881,8 +1906,19 @@ body {
     if (new Date().getTime() - comms.lastTouch > IDLE_RETURN_MS) { goDash(); }
   }
 
+  // Comms and tide screens fall back to the dashboard after IDLE_RETURN_MS without a touch.
+  var idleWatching = false;
+  function startIdleWatch() {
+    if (idleWatching) { return; }
+    idleWatching = true;
+    document.addEventListener('touchstart', noteTouch, false);
+    document.addEventListener('mousedown', noteTouch, false);
+    document.addEventListener('keydown', noteTouch, false);
+    document.addEventListener('input', noteTouch, false);
+    setInterval(checkIdle, 5000);
+  }
+
   function housekeeping() {
-    checkIdle();
     if (comms.data) { checkAlerts(); }
     updateAudioLabel();
   }
@@ -1901,14 +1937,304 @@ body {
       var unread = unreadList();
       if (unread.length) { openDetail(unread[0].id, 'dash'); }
     });
-    document.addEventListener('touchstart', noteTouch, false);
-    document.addEventListener('mousedown', noteTouch, false);
-    document.addEventListener('keydown', noteTouch, false);
-    document.addEventListener('input', noteTouch, false);
+    startIdleWatch();
     setInterval(housekeeping, 5000);
     enableSounds(cfg);
     loadMessages();
     setInterval(loadMessages, MESSAGES_EVERY_MS);
+  }
+
+  /* ==========================================================================
+     CETACEAN OPS: tides from /api/tides (NOAA highs and lows, times in epoch
+     seconds). Between a high and a low the curve is a half cosine, the way
+     printed tide charts are drawn. Shares the comms bay and the lower spine.
+     ========================================================================== */
+  var TIDES_URL = '/api/tides';
+  var TIDES_EVERY_MS = 30 * 60 * 1000;
+  var HOUR_MS = 3600 * 1000;
+  // hours shown before and after now, and the spacing of the time labels
+  var TIDE_SPANS = { 12: { back: 2, ahead: 10, step: 2 }, 24: { back: 3, ahead: 21, step: 3 } };
+  var TIDE_FONT = "'Antonio', 'HelveticaNeue-CondensedBold', 'Helvetica Neue', sans-serif";
+  var tides = { enabled: false, data: null, online: true, span: 24 };
+  var sunTimes = [];   // [{rise: ms, set: ms}] per day, from the weather feed
+
+  // Open-Meteo gives local times like "2026-11-07T07:05" (old Safari can't parse that reliably).
+  function localMs(s) {
+    var m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/.exec(s || '');
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null;
+  }
+  function noteSun(rise, set) {
+    var out = [];
+    if (rise && set) {
+      for (var i = 0; i < rise.length && i < set.length; i++) {
+        var r = localMs(rise[i]), s = localMs(set[i]);
+        if (r !== null && s !== null) { out.push({ rise: r, set: s }); }
+      }
+    }
+    if (out.length) { sunTimes = out; }
+  }
+
+  // Tide height at ms, or null outside the data.
+  function tideAt(list, ms) {
+    for (var i = 0; i < list.length - 1; i++) {
+      var a = list[i].t * 1000, b = list[i + 1].t * 1000;
+      if (ms >= a && ms <= b) {
+        var f = b > a ? (ms - a) / (b - a) : 0;
+        return list[i].v + (list[i + 1].v - list[i].v) * (1 - Math.cos(Math.PI * f)) / 2;
+      }
+    }
+    return null;
+  }
+  function nextTides(list, ms, n) {
+    var out = [];
+    for (var i = 0; i < list.length && out.length < n; i++) {
+      if (list[i].t * 1000 > ms) { out.push(list[i]); }
+    }
+    return out;
+  }
+  function tideNum(v) { return v.toFixed(1).replace('-', '\u2212'); }
+  function tideKind(x) { return x.type === 'H' ? 'HIGH TIDE' : (x.v < 0 ? 'MINUS TIDE' : 'LOW TIDE'); }
+
+  function loadTides() {
+    getJSON(TIDES_URL, function (d) {
+      if (d && d.tides && d.tides.length > 1) {
+        tides.data = d;
+        tides.online = true;
+      } else {
+        tides.online = false;
+      }
+      if (comms.screen === 'tides') { render(); }
+    }, function () {
+      tides.online = false;   // keep the last curve on screen
+      if (comms.screen === 'tides') { render(); }
+    });
+  }
+
+  function goTides() {
+    cue('open');
+    show('tides');
+    loadTides();
+  }
+  function spanButton(hours) {
+    return { t: hours + ' HOURS', sel: tides.span === hours,
+             fn: function () { tides.span = hours; render(); } };
+  }
+
+  function renderTides() {
+    var d = tides.data, now = new Date().getTime();
+    var next = d ? nextTides(d.tides, now, 4) : [];
+    var sig = !tides.online ? 'SIGNAL LOST' : (!d ? 'SCANNING' :
+              (next.length ? (next[0].type === 'H' ? 'TIDE RISING \u25B2' : 'TIDE FALLING \u25BC') : 'NO PREDICTIONS'));
+    var main = bay('Cetacean Ops', sig, !tides.online, 'hd-td');
+    spine([{ t: 'RETURN', fn: goDash }, spanButton(12), spanButton(24), null]);
+    if (!d) {
+      main.appendChild(el('div', 'cm-msg', tides.online ? 'ACQUIRING TIDAL TELEMETRY' : 'TIDAL SENSORS OFFLINE'));
+      return;
+    }
+    var sub = el('div', 'td-sub');
+    sub.appendChild(document.createTextNode((d.name || 'TIDE STATION') + MID + 'NOAA ' + d.station));
+    var cur = tideAt(d.tides, now);
+    if (cur !== null) {
+      sub.appendChild(document.createTextNode(MID + 'NOW '));
+      sub.appendChild(el('b', null, tideNum(cur) + ' ' + d.units));
+    }
+    main.appendChild(sub);
+    var plot = el('div', 'td-plot');
+    main.appendChild(plot);
+    var row = el('div', 'td-next');
+    for (var i = 0; i < next.length; i++) {
+      var x = next[i], when = new Date(x.t * 1000);
+      var cell = el('div', 'td-x ' + (x.type === 'H' ? 'hi' : (x.v < 0 ? 'minus' : 'lo')));
+      cell.appendChild(el('div', 'td-tab'));
+      var txt = el('div', 'td-txt');
+      txt.appendChild(el('div', 'td-k', tideKind(x)));
+      var v = el('div', 'td-v', hhmm(when));
+      if (when.toDateString() !== new Date(now).toDateString()) { v.appendChild(el('small', null, DAYS3[when.getDay()])); }
+      txt.appendChild(v);
+      txt.appendChild(el('div', 'td-h', tideNum(x.v) + ' ' + d.units));
+      cell.appendChild(txt);
+      row.appendChild(cell);
+    }
+    main.appendChild(row);
+    drawTides(plot, d, TIDE_SPANS[tides.span], now);
+  }
+
+  function drawTides(box, d, span, now) {
+    var w = box.clientWidth, h = box.clientHeight;
+    if (w < 50 || h < 50) { return; }
+    var cv = document.createElement('canvas');
+    var g = cv.getContext && cv.getContext('2d');
+    if (!g) { return; }
+    var dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    cv.style.width = w + 'px';
+    cv.style.height = h + 'px';
+    box.appendChild(cv);
+    g.scale(dpr, dpr);
+
+    var rem = parseFloat(document.documentElement.style.fontSize) || 16;
+    var list = d.tides;
+    var t0 = now - span.back * HOUR_MS, t1 = now + span.ahead * HOUR_MS;
+    var L = 3.25 * rem, R = 0.75 * rem, B = 1.75 * rem;   // room for the axis labels
+    var padT = 3 * rem, padB = 3 * rem;                   // room for the high/low labels
+    var pw = w - L - R, ph = h - B;
+    function X(ms) { return L + (ms - t0) / (t1 - t0) * pw; }
+
+    // height range: extremes in view plus the ones just outside (the curve heads toward them)
+    var lo = null, hi = null, i, ms;
+    for (i = 0; i < list.length; i++) {
+      ms = list[i].t * 1000;
+      if (ms >= t0 - 7 * HOUR_MS && ms <= t1 + 7 * HOUR_MS) {
+        lo = lo === null ? list[i].v : Math.min(lo, list[i].v);
+        hi = hi === null ? list[i].v : Math.max(hi, list[i].v);
+      }
+    }
+    if (lo === null) { return; }
+    if (hi - lo < 0.5) { hi += 0.25; lo -= 0.25; }
+    function Y(v) { return ph - padB - (v - lo) / (hi - lo) * (ph - padT - padB); }
+    // about 4-6 height lines across the whole plot
+    var shown = (hi - lo) * ph / (ph - padT - padB);
+    var steps = d.units === 'M' ? [0.25, 0.5, 1, 2, 5] : [1, 2, 5, 10, 20];
+    var stepY = steps[steps.length - 1];
+    for (var si = 0; si < steps.length; si++) {
+      if (shown / steps[si] <= 6) { stepY = steps[si]; break; }
+    }
+
+    // night shading
+    g.fillStyle = 'rgba(153,153,255,0.13)';
+    for (i = 0; i <= sunTimes.length; i++) {
+      var ns = i === 0 ? t0 : sunTimes[i - 1].set;
+      var ne = i === sunTimes.length ? t1 : sunTimes[i].rise;
+      var a = Math.max(ns, t0), b = Math.min(ne, t1);
+      if (sunTimes.length && b > a) { g.fillRect(X(a), 0, X(b) - X(a), ph); }
+    }
+
+    // height grid
+    g.font = (0.9375 * rem) + 'px ' + TIDE_FONT;
+    g.textAlign = 'right';
+    g.textBaseline = 'middle';
+    var vBottom = lo - padB / (ph - padT - padB) * (hi - lo);   // height at the bottom edge
+    for (var v = Math.ceil(vBottom / stepY) * stepY; Y(v) >= 0; v += stepY) {
+      var y = Math.round(Y(v)) + 0.5;
+      g.fillStyle = Math.abs(v) < 0.001 ? '#ff6600' : '#333333';
+      g.fillRect(L, y - 0.5, pw, 1);
+      if (y < 0.6 * rem || y > ph - 0.6 * rem) { continue; }   // label would be cut off
+      g.fillStyle = Math.abs(v) < 0.001 ? '#ff6600' : '#ff9900';
+      g.fillText(tideNum(v).replace('.0', '') + ' ' + d.units, L - 0.5 * rem, y);
+    }
+
+    // time grid: every span.step hours on the local clock
+    var tick = new Date(t0);
+    tick.setMinutes(0, 0, 0);
+    while (tick.getHours() % span.step) { tick.setTime(tick.getTime() + HOUR_MS); }
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    for (; tick.getTime() <= t1; tick.setTime(tick.getTime() + span.step * HOUR_MS)) {
+      ms = tick.getTime();
+      if (ms < t0) { continue; }
+      var tx = Math.round(X(ms)) + 0.5, midnight = tick.getHours() === 0;
+      g.fillStyle = midnight ? '#66ccff' : '#262626';
+      g.fillRect(tx - 0.5, 0, 1, ph);
+      g.fillStyle = midnight ? '#66ccff' : '#ff9900';
+      if (tx > L + rem && tx < w - rem) {
+        g.fillText(midnight ? DAYS3[tick.getDay()] : pad(tick.getHours()) + ':00', tx, ph + 0.35 * rem);
+      }
+    }
+
+    // the water: filled curve, sampled every 2 px
+    g.beginPath();
+    var started = false, lastX = L;
+    for (var px = L; px <= L + pw + 0.1; px += 2) {
+      var hv = tideAt(list, t0 + (px - L) / pw * (t1 - t0));
+      if (hv === null) { continue; }
+      if (!started) { g.moveTo(px, ph); started = true; }
+      g.lineTo(px, Y(hv));
+      lastX = px;
+    }
+    if (!started) { return; }
+    g.lineTo(lastX, ph);
+    g.closePath();
+    g.fillStyle = 'rgba(102,204,255,0.28)';
+    g.fill();
+    g.beginPath();
+    started = false;
+    for (px = L; px <= L + pw + 0.1; px += 2) {
+      hv = tideAt(list, t0 + (px - L) / pw * (t1 - t0));
+      if (hv === null) { continue; }
+      if (started) { g.lineTo(px, Y(hv)); } else { g.moveTo(px, Y(hv)); started = true; }
+    }
+    g.strokeStyle = '#66ccff';
+    g.lineWidth = 0.1875 * rem;
+    g.stroke();
+
+    // the past is dimmed
+    var xn = X(now);
+    g.fillStyle = 'rgba(0,0,0,0.45)';
+    g.fillRect(L, 0, xn - L, ph);
+
+    // highs and lows
+    for (i = 0; i < list.length; i++) {
+      ms = list[i].t * 1000;
+      if (ms < t0 || ms > t1) { continue; }
+      var e = list[i], ex = X(ms), ey = Y(e.v), high = e.type === 'H', minus = !high && e.v < 0;
+      g.beginPath();
+      g.arc(ex, ey, 0.3125 * rem, 0, Math.PI * 2);
+      g.fillStyle = minus ? '#ff6600' : (high ? '#ffcc99' : '#66ccff');
+      g.fill();
+      var lx = Math.max(L + 2 * rem, Math.min(w - R - 2 * rem, ex));
+      g.textAlign = 'center';
+      g.textBaseline = 'alphabetic';
+      var when = hhmm(new Date(ms)), height = tideNum(e.v) + ' ' + d.units + (minus ? ' MINUS' : '');
+      g.font = 'bold ' + (1.125 * rem) + 'px ' + TIDE_FONT;
+      g.fillStyle = minus ? '#ff6600' : '#ffcc99';
+      if (high) {
+        g.fillText(height, lx, ey - 0.75 * rem);
+        g.font = (0.9375 * rem) + 'px ' + TIDE_FONT;
+        g.fillStyle = '#ff9900';
+        g.fillText(when, lx, ey - 2 * rem);
+      } else {
+        g.fillText(height, lx, ey + 1.75 * rem);
+        g.font = (0.9375 * rem) + 'px ' + TIDE_FONT;
+        g.fillStyle = '#ff9900';
+        g.fillText(when, lx, ey + 2.9 * rem);
+      }
+    }
+
+    // NOW marker
+    var hn = tideAt(list, now);
+    g.fillStyle = '#ff6600';
+    g.fillRect(Math.round(xn) - 1, 0, 2, ph);
+    if (hn !== null) {
+      g.beginPath();
+      g.arc(xn, Y(hn), 0.5 * rem, 0, Math.PI * 2);
+      g.fillStyle = '#000';
+      g.fill();
+      g.beginPath();
+      g.arc(xn, Y(hn), 0.375 * rem, 0, Math.PI * 2);
+      g.fillStyle = '#ff6600';
+      g.fill();
+    }
+    g.font = 'bold ' + (0.9375 * rem) + 'px ' + TIDE_FONT;
+    g.textAlign = 'left';
+    g.textBaseline = 'top';
+    g.fillStyle = '#ff6600';
+    g.fillRect(xn, 0, 2.75 * rem, 1.375 * rem);
+    g.fillStyle = '#000';
+    g.fillText('NOW', xn + 0.5 * rem, 0.25 * rem);
+  }
+
+  function enableTides() {
+    if (tides.enabled) { return; }
+    tides.enabled = true;
+    var seg = $('sp-tides');
+    seg.textContent = '06 CETACEAN OPS';
+    seg.className = 'sp sp-6 sp-bottom tap';
+    seg.onclick = tapper(goTides);
+    startIdleWatch();
+    loadTides();
+    setInterval(loadTides, TIDES_EVERY_MS);
+    setInterval(function () { if (comms.screen === 'tides') { render(); } }, 60 * 1000);   // move NOW
   }
 
   /* ---------- display settings from config.json via server.py ---------- */
@@ -1916,6 +2242,7 @@ body {
     getJSON('/api/config', function (c) {
       if (c && c.location_name) { $('wx-loc').textContent = c.location_name; }
       if (c && c.nightly_reload === false) { nightlyReload = false; }
+      if (c && c.tides_enabled) { enableTides(); }
       if (c && c.messaging_enabled && c.crew && c.crew.length && !comms.enabled) { enableComms(c); }
     }, function () {
       setTimeout(loadConfig, 60 * 1000);   // server not up yet: try again

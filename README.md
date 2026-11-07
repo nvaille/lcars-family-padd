@@ -10,6 +10,7 @@ It's built to run on very old hardware (the reference kiosk is a 1st-gen iPad Mi
 - **Environmental Sensors**: current conditions, hourly strip and 5-day forecast from [Open-Meteo](https://open-meteo.com) (no API key needed)
 - **Mission Log**: upcoming events from an iCloud, Google, Outlook or any other `.ics` feed, with recurring-event support (RRULE, EXDATE, RECURRENCE-ID)
 - **Stoic Directive**: a quote that rotates hourly
+- **Cetacean Ops**: a tide chart for US coasts from [NOAA](https://tidesandcurrents.noaa.gov) (no API key needed), on its own screen. It shows a 12- or 24-hour curve with a moving NOW marker, the highs and lows, and the next four tides
 - **Family comms**: kids send preset messages ("I'M HOME FROM SCHOOL") to parents' phones over Telegram, and parents reply. Includes LCARS-style sound cues and quiet hours
 - Scales the 1024×748 design to any screen; auto-reloads nightly to keep old Safari stable (`nightly_reload`)
 
@@ -41,6 +42,8 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `max_events` | `LCARS_MAX_EVENTS` | Events sent to the kiosk (default `5`) |
 | `lookahead_days` | `LCARS_LOOKAHEAD_DAYS` | How far ahead recurring events are expanded (default `60`) |
 | `timed_default_minutes` | `LCARS_TIMED_DEFAULT_MINUTES` | Assumed length of events with no end time (default `60`) |
+| `tide_station_id` | `LCARS_TIDE_STATION` | NOAA tide station for the **06 CETACEAN OPS** screen, e.g. `9414290` (San Francisco). Empty (default) hides the button. US coasts only |
+| `tide_units` | `LCARS_TIDE_UNITS` | Tide heights in `feet` (default) or `meters` |
 | `nightly_reload` | `LCARS_NIGHTLY_RELOAD` | Reload the kiosk page at 3 a.m. to keep old Safari stable (default `true`). Each reload needs a tap to re-arm audio |
 | `messaging_provider` | `LCARS_MESSAGING_PROVIDER` | `none` (default) or `telegram`. Turns family text messages on |
 | `telegram_bot_token` | `LCARS_TELEGRAM_TOKEN` | Your bot's token from @BotFather. **Secret** |
@@ -72,7 +75,8 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | Command | What it sets up |
 |---|---|
 | `python3 configure.py` | Everything below, one section after another, with a single save at the end |
-| `python3 configure.py location` | Weather location: type a city (e.g. `Springfield, IL`) and pick the right match |
+| `python3 configure.py location` | Weather location: type a city (e.g. `Springfield, IL`) and pick the right match. Then offers the nearest tide stations |
+| `python3 configure.py tides` | Tide station for the Cetacean Ops screen: pick a nearby station, type a station ID, or turn it off. Also feet or meters |
 | `python3 configure.py calendar` | Calendar feed address. Typing is hidden, and the feed is checked before saving ("Found 12 upcoming events…") |
 | `python3 configure.py messaging` | Telegram bot, contacts, family group and crew (see below) |
 | `python3 configure.py contacts` | Add (pair), remove or rename the people who get messages |
@@ -117,6 +121,15 @@ The PADD plays short original tones when you tap buttons, open a channel, send a
 - **Sound test:** press and hold the audio pill for about a second. It plays every cue in turn.
 - **Your own sounds:** see [`sounds/README.md`](sounds/README.md).
 
+### Tides (Cetacean Ops)
+
+On the US coast, the PADD can show a tide chart. Run `python3 configure.py tides` (or the `location` step), pick the nearest NOAA station, then restart the server. A **06 CETACEAN OPS** button appears on the lower spine.
+
+- **The screen:** a tide curve with a moving NOW marker. Nighttime is shaded (sunrise and sunset come from the weather feed), the past is dimmed, and highs and lows are labeled. Minus tides, good for tide pooling, are in orange. The heading says whether the tide is rising or falling, and the strip at the bottom lists the next four tides.
+- **Buttons:** **12 HOURS** and **24 HOURS** change the span. **RETURN** goes back to the dashboard, and so does leaving it untouched for 90 seconds.
+- **Data:** the server asks NOAA for the high and low times every 6 hours and keeps the last good copy, so a short internet outage doesn't blank the chart. Heights are measured from MLLW (mean lower low water), like printed tide tables. The curve between a high and a low is drawn the standard way (a smooth half-wave), so it can be a few inches off NOAA's minute-by-minute numbers.
+- **Finding a station by hand:** go to [tidesandcurrents.noaa.gov](https://tidesandcurrents.noaa.gov), find your area on the map, and copy the 7-digit station ID.
+
 ### Getting a calendar feed URL
 
 - **Apple iCloud**: Calendar app → right-click the calendar → *Share Calendar* → tick *Public Calendar* → copy the `webcal://` link.
@@ -142,7 +155,7 @@ To load a new version of the dashboard, tap the **LCARS 2247** title. It reloads
 
 ## Security notes
 
-The server only serves the dashboard and static assets (`.html`, `.css`, `.js`, fonts, images), plus any sound files you list in `sound_files` (only from `sounds/`). Requests for `config.json`, `messages.json`, `server.py`, dotfiles and anything else return 404. `/api/config` exposes only display values (the location label, sound settings, and, when messaging is on, crew and contact *names* and presets). It never exposes the calendar URL, the bot token or chat IDs. The server has no authentication, so run it on your home network only.
+The server only serves the dashboard and static assets (`.html`, `.css`, `.js`, fonts, images), plus any sound files you list in `sound_files` (only from `sounds/`). Requests for `config.json`, `messages.json`, `server.py`, dotfiles and anything else return 404. `/api/tides` returns only public NOAA predictions for your station. `/api/config` exposes only display values (the location label, sound settings, and, when messaging is on, crew and contact *names* and presets). It never exposes the calendar URL, the bot token or chat IDs. The server has no authentication, so run it on your home network only.
 
 Text messages:
 
