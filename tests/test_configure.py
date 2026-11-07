@@ -346,10 +346,39 @@ class SectionTests(unittest.TestCase):
     # ----- sounds -----
 
     def test_sounds_defaults_write_nothing(self):
-        # sounds on, volume, taps, quiet hours, repeat minutes, repeat max
-        self.assertEqual(self.run_section("sounds", ["", "", "", "", "", ""], existing={}), 0, self.text())
+        # sounds on, volume, taps, quiet hours, repeat minutes, repeat max, don't look again
+        self.assertEqual(self.run_section("sounds", ["", "", "", "", "", "", ""], existing={}), 0, self.text())
         self.assertIn("No changes", self.text())
-        self.assertIn("built-in tones", self.text())
+        self.assertIn("built-in tone", self.text())
+        self.assertIn(os.path.abspath(self.sounds), self.text())   # the folder path is spelled out
+
+    def test_sounds_folder_rescan_finds_new_files(self):
+        sounds = self.sounds
+
+        class Copier(object):     # copies a file in when asked to look again, like the owner in Finder
+            def __init__(self, answers):
+                self.answers = list(answers)
+
+            def __call__(self, prompt):
+                if "Look in the sounds folder again" in prompt:
+                    open(os.path.join(sounds, "chirp.wav"), "w").close()
+                return self.answers.pop(0)
+
+        answers = ["", "", "", "", "", "",
+                   "y",          # look again (chirp.wav appears)
+                   "",           # choose files: default is now Yes
+                   "8", "1",     # lcars -> chirp.wav
+                   "",           # done with cues
+                   ""]           # save
+        code = configure.run_section(self.path, "sounds", ask=Copier(answers), secret=Script([]),
+                                     out=self.output.append, sounds_dir=self.sounds)
+        self.assertEqual(code, 0, self.text())
+        self.assertEqual(self.saved()["sound_files"], {"lcars": "chirp.wav"})
+        self.assertIn("the LCARS button, which reloads", self.text())
+        server_cfg = dict(server.DEFAULTS, sound_files={"lcars": "chirp.wav"})
+        warnings = []
+        server.normalize_messaging(server_cfg, warn=warnings.append)
+        self.assertEqual((warnings, server_cfg["sound_files"]), ([], {"lcars": "chirp.wav"}))
 
     def test_sounds_changes_and_file_mapping(self):
         for name in ("hail.mp3", "beep.wav", "notes.txt", ".hidden.mp3"):
@@ -377,7 +406,7 @@ class SectionTests(unittest.TestCase):
         self.run_section("sounds", ["n", ""])
         self.assertEqual(self.saved(), {"sounds_enabled": False})
         self.output = []
-        self.run_section("sounds", ["y", "", "", "off", "", "", ""])
+        self.run_section("sounds", ["y", "", "", "off", "", "", "", ""])
         self.assertEqual(self.saved(), {"sounds_enabled": True, "quiet_hours": ""})
 
     # ----- security -----
@@ -618,7 +647,7 @@ class TourTests(unittest.TestCase):
     def test_first_run_without_messaging(self):
         answers = ["Springfield", "2", "",   # location: pick Illinois, keep label
                    "",                        # no text messaging
-                   "", "50", "", "", "", "",  # sounds: volume 50
+                   "", "50", "", "", "", "", "",  # sounds: volume 50
                    ""]                        # save
         self.assertEqual(self.tour(answers, secrets=[""]), 0, self.text())
         cfg = self.saved()
@@ -634,7 +663,7 @@ class TourTests(unittest.TestCase):
                    "",                    # no family group
                    "",                    # crew menu: done
                    "", "", "", "",        # presets done, typed messages, replies done, signature
-                   "", "", "", "", "", "",  # sounds
+                   "", "", "", "", "", "", "",  # sounds
                    "", "",                # allowlist done, rate limit
                    "n"]                   # no test transmission
         self.assertEqual(self.tour(answers, secrets=[""], existing=FAMILY, batches=[]), 0, self.text())
@@ -648,7 +677,7 @@ class TourTests(unittest.TestCase):
         answers = ["Springfield", "1", "Home",  # location
                    "y",                          # set up messaging...
                    "",                           # ...but the server is running: don't continue
-                   "", "", "", "", "", "",       # sounds
+                   "", "", "", "", "", "", "",   # sounds
                    ""]                           # save
         self.assertEqual(self.tour(answers, secrets=[""], running=True), 0, self.text())
         cfg = self.saved()
@@ -658,7 +687,7 @@ class TourTests(unittest.TestCase):
 
     def test_failed_pairing_undoes_messaging_changes(self):
         answers = ["", "y"]  # keep location, try messaging (nobody pairs)
-        answers += ["", "", "", "", "", ""]  # sounds; nothing changed, so no save question
+        answers += ["", "", "", "", "", "", ""]  # sounds; nothing changed, so no save question
         code = self.tour(answers, secrets=["", GOOD_TOKEN], batches=[])
         self.assertEqual(code, 0, self.text())
         self.assertIn("No contacts paired", self.text())
