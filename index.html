@@ -306,9 +306,10 @@ body {
 .spb.sel { background: #66ccff; }
 .tap { cursor: pointer; }
 .tap:active { opacity: 0.6; }
-@-webkit-keyframes alert { 0% { background-color: #cc4444; } 50% { background-color: #ff6600; } }
-@keyframes alert { 0% { background-color: #cc4444; } 50% { background-color: #ff6600; } }
-.sp.alert { -webkit-animation: alert 1.4s steps(1) infinite; animation: alert 1.4s steps(1) infinite; }
+/* unread COMMS: slow fade between the segment's own peach and red-alert red */
+@-webkit-keyframes alert { from { background-color: #ffcc99; } to { background-color: #e0201b; } }
+@keyframes alert { from { background-color: #ffcc99; } to { background-color: #e0201b; } }
+.sp.alert { -webkit-animation: alert 1.5s ease-in-out infinite alternate; animation: alert 1.5s ease-in-out infinite alternate; }
 
 /* INCOMING TRANSMISSION strip (replaces the Stoic Directive while unread) */
 .incoming { flex: 0 0 auto; margin-bottom: 1.25rem; }
