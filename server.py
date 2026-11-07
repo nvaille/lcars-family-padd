@@ -291,6 +291,10 @@ MAX_SOUND_BYTES = 2 * 1024 * 1024
 STATIC_EXTENSIONS = (".html", ".css", ".js", ".woff", ".woff2", ".ttf",
                      ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp")
 
+# iOS guesses several home-screen icon names (sized, -precomposed); all get the one icon.
+ICON_ALIAS = re.compile(r"^/apple-touch-icon(-\d{2,3}x\d{2,3})?(-precomposed)?\.png$")
+ICON_PATH = "/apple-touch-icon.png"
+
 
 # ---------------------------------------------------------------------------
 # ICS parsing (standard library only)
@@ -1208,6 +1212,8 @@ class LCARSHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         self._revalidate = False
         path = self.path.split("?", 1)[0]
+        if ICON_ALIAS.match(path):
+            self.path = path = ICON_PATH
 
         if path == "/api/events":
             if not ICS_FEED_URL:
