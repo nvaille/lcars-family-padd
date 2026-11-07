@@ -296,7 +296,7 @@ I'M HOME FROM SCHOOL · 15:44
    - The unlock trick is to play a 1-sample silent buffer, created with `createBuffer(1, 1, 22050)`, from that first `touchend`. Keep retrying on later touches until it's confirmed.
 2. **The nightly 3 a.m. reload re-locks audio.** Tapping the title to reload does too. Until someone touches the PADD after a reload, an incoming message is **visual only**. The 3 a.m. reload falls inside the default quiet hours.
    - **Indicator:** while audio isn't unlocked, a spine or caps label reads `AUDIO STANDBY · TOUCH TO ARM`. After the first touch it changes to `AUDIO ONLINE`.
-   - **Option to test later:** make the nightly reload configurable (`nightly_reload: true`), and try a "soft refresh" that keeps the audio unlock.
+   - **Shipped (PR #8):** `nightly_reload` (default `true`) turns the 3 a.m. reload on or off. Setting it to `false` keeps audio armed overnight. It is on/off only: no configurable hour and no "soft refresh".
 3. **The side switch.** Web Audio is silenced by iOS mute (the side switch set to Mute, or Mute in Control Center).
    - **Setup step:** Settings → General → set the side switch to **Lock Rotation**, make sure mute is off, and turn the volume up. Put this in the README's kiosk setup section.
    - **Fallback (tried, failed):** start a looping, near-silent `<audio>` element on the first tap, which is reported to switch the page into a "playback" audio session that ignores the mute switch.
