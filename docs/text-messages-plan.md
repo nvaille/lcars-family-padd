@@ -299,7 +299,8 @@ I'M HOME FROM SCHOOL · 15:44
    - **Option to test later:** make the nightly reload configurable (`nightly_reload: true`), and try a "soft refresh" that keeps the audio unlock.
 3. **The side switch.** Web Audio is silenced by iOS mute (the side switch set to Mute, or Mute in Control Center).
    - **Setup step:** Settings → General → set the side switch to **Lock Rotation**, make sure mute is off, and turn the volume up. Put this in the README's kiosk setup section.
-   - **Fallback to test:** start a looping, near-silent `<audio>` element on the first tap, which is reported to switch the page into a "playback" audio session that ignores the mute switch. This needs testing on iOS 9.
+   - **Fallback (tried, failed):** start a looping, near-silent `<audio>` element on the first tap, which is reported to switch the page into a "playback" audio session that ignores the mute switch.
+   - **Tested 2026-11-07: doesn't work on iOS 9.** A looping 1-second silent WAV (`data:` URI), started from the first tap, left the cues silent while the iPad was muted. The code was dropped; the README setup step (side switch → Lock Rotation, mute off) is the answer.
 
 ### Where the sounds come from (copyright)
 
