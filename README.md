@@ -60,7 +60,7 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `quiet_hours` | `LCARS_QUIET_HOURS` | Visual alerts only during this range (default `22:00-07:00`; may cross midnight; empty = off) |
 | `incoming_repeat_minutes` | `LCARS_INCOMING_REPEAT_MINUTES` | Repeat the incoming alert while unread (default `5`, `0` = off) |
 | `incoming_repeat_max` | `LCARS_INCOMING_REPEAT_MAX` | Most repeats per message (default `3`) |
-| `sound_files` | `LCARS_SOUND_FILES_JSON` | Optional sound files in `sounds/` per cue, e.g. `{"incoming":"hail.mp3"}` |
+| `sound_files` | `LCARS_SOUND_FILES_JSON` | Optional sound files in `sounds/` per cue, e.g. `{"incoming":"hail.mp3"}`. Cues: `tap`, `incoming`, `transmit`, `sent`, `ack`, `fail`, `open`, `lcars` (the LCARS title button) |
 
 `LCARS_CONFIG` can point to a config file somewhere else. Settings ending in `_JSON` take JSON text when set as environment variables.
 

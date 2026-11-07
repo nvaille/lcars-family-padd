@@ -534,7 +534,10 @@ body {
   /* ---------- kiosk hardening ---------- */
   document.addEventListener('touchmove', function (e) { e.preventDefault(); }, false);
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, false);
-  $('title').addEventListener('click', function () { window.location.reload(true); }, false);
+  $('title').addEventListener('click', function () {
+    cue('lcars');
+    setTimeout(function () { window.location.reload(true); }, cueMs('lcars'));
+  }, false);
 
   /* ---------- XHR (same-origin, no query string: server routes match exact paths) ---------- */
   function getJSON(url, ok, fail) {
@@ -956,7 +959,8 @@ body {
      Automatic cues (incoming, ack) are silent during quiet hours; cues a person
      triggers play at 30% volume then.
      ========================================================================== */
-  var CUE_ORDER = ['tap', 'open', 'transmit', 'sent', 'incoming', 'ack', 'fail'];
+  var CUE_ORDER = ['tap', 'open', 'transmit', 'sent', 'incoming', 'ack', 'fail', 'lcars'];
+  var RELOAD_SOUND_MAX_MS = 2000;   // the LCARS button waits at most this long for its sound
   var AUTO_CUES = { incoming: true, ack: true };
   var QUIET_VOLUME = 0.3;
   var LONG_PRESS_MS = 700;
@@ -1015,6 +1019,10 @@ body {
     } else if (name === 'open') {               // gentle two-note channel open
       tone(t, 523, 0, 0.14, v * 0.8, 'sine');
       tone(t + 0.15, 784, 0, 0.22, v * 0.8, 'sine');
+    } else if (name === 'lcars') {              // LCARS button: three quick rising blips
+      tone(t, 784, 0, 0.06, v * 0.6, 'triangle');
+      tone(t + 0.07, 1175, 0, 0.06, v * 0.6, 'triangle');
+      tone(t + 0.14, 1568, 0, 0.12, v * 0.6, 'triangle');
     }
   }
 
@@ -1037,6 +1045,14 @@ body {
   }
 
   function soundsOn() { return !!(audio.cfg && audio.cfg.sounds_enabled); }
+
+  // How long a cue lasts, so the LCARS button can let it finish before reloading.
+  function cueMs(name) {
+    if (!soundsOn() || !audio.ctx) { return 0; }
+    var buf = audio.buffers[name];
+    if (buf) { return Math.min(RELOAD_SOUND_MAX_MS, Math.ceil(buf.duration * 1000) + 50); }
+    return name === 'lcars' ? 330 : 0;
+  }
 
   function parseHM(text) {
     var m = /^(\d\d):(\d\d)$/.exec(text || '');

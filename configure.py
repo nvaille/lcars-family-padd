@@ -57,6 +57,7 @@ CUE_HELP = {
     "ack": "someone replied to a message",
     "fail": "a message could not be sent",
     "open": "the comms screens open",
+    "lcars": "the LCARS button, which reloads",
 }
 MISSING = object()
 
@@ -477,27 +478,40 @@ class Setup(Prompts):
                     return "%02d:%02d-%02d:%02d" % (h1, m1, h2, m2)
             self.out("  Use 24-hour times like 22:00-07:00.")
 
-    def _sound_files(self):
+    def _list_sound_files(self):
         try:
-            files = sorted(f for f in os.listdir(self.sounds_dir)
-                           if f.lower().endswith(server.SOUND_EXTENSIONS) and not f.startswith("."))
+            return sorted(f for f in os.listdir(self.sounds_dir)
+                          if f.lower().endswith(server.SOUND_EXTENSIONS) and not f.startswith("."))
         except OSError:
-            files = []
+            return []
+
+    def _show_cues(self, cues, mapping):
+        for i, cue in enumerate(cues):
+            self.out("  %d. %-9s %-36s %s" % (i + 1, cue, "(" + CUE_HELP[cue] + ")",
+                                             mapping.get(cue, "built-in tone")))
+
+    def _sound_files(self):
         mapping = self.current("sound_files")
         mapping = dict(mapping) if isinstance(mapping, dict) else {}
-        if not files:
-            self.out("No sound files in the sounds/ folder, so the PADD uses its built-in tones.\n"
-                     "(To use your own, see sounds/README.md, then run:  python3 configure.py sounds)")
-            return
-        self.out("Found %d sound file%s in sounds/." % (len(files), "" if len(files) == 1 else "s"))
-        if not self.yes("Choose which files play for each cue?", default=False):
-            return
         cues = list(server.SOUND_CUES)
+        self.out("\n-- Your own sound files (optional) --")
+        files = self._list_sound_files()
+        while not files:
+            self.out("The sounds folder is empty, so every cue uses the PADD's built-in tone.\n"
+                     "To use your own sounds, copy .mp3, .m4a or .wav files (short, under 2 MB) into:\n"
+                     "    %s\n"
+                     "You can do that now in Finder, then answer y below." % os.path.abspath(self.sounds_dir))
+            if not self.yes("Look in the sounds folder again?", default=False):
+                return
+            files = self._list_sound_files()
+        self.out("Found %d sound file%s in the sounds folder. Right now the cues play:"
+                 % (len(files), "" if len(files) == 1 else "s"))
+        self._show_cues(cues, mapping)
+        if not self.yes("Choose which files play for each cue?", default=True):
+            return
         while True:
             self.out("")
-            for i, cue in enumerate(cues):
-                self.out("  %d. %-9s %-30s %s" % (i + 1, cue, "(" + CUE_HELP[cue] + ")",
-                                                 mapping.get(cue, "built-in tone")))
+            self._show_cues(cues, mapping)
             idx = self.pick("Cue number to change (Enter when done): ", len(cues))
             if idx is None:
                 break

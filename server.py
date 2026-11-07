@@ -115,7 +115,7 @@ ENV_VARS = {
 EMPTY_ENV_ALLOWED = ("quiet_hours", "telegram_group_chat_id", "kiosk_allowed_ips")
 
 SOUND_EXTENSIONS = (".mp3", ".m4a", ".wav")
-SOUND_CUES = ("tap", "incoming", "transmit", "sent", "ack", "fail", "open")
+SOUND_CUES = ("tap", "incoming", "transmit", "sent", "ack", "fail", "open", "lcars")
 
 
 def config_path():
