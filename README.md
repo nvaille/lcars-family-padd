@@ -64,7 +64,7 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `quiet_hours` | `LCARS_QUIET_HOURS` | Visual alerts only during this range (default `22:00-07:00`; may cross midnight; empty = off) |
 | `incoming_repeat_minutes` | `LCARS_INCOMING_REPEAT_MINUTES` | Repeat the incoming alert while unread (default `5`, `0` = off) |
 | `incoming_repeat_max` | `LCARS_INCOMING_REPEAT_MAX` | Most repeats per message (default `3`) |
-| `sound_files` | `LCARS_SOUND_FILES_JSON` | Optional sound files in `sounds/` per cue, e.g. `{"incoming":"hail.mp3"}`. Cues: `tap`, `incoming`, `transmit`, `sent`, `ack`, `fail`, `open`, `lcars` (the LCARS title button) |
+| `sound_files` | `LCARS_SOUND_FILES_JSON` | Optional sound files in `sounds/` per cue, e.g. `{"incoming":"hail.mp3"}`. Cues: `tap`, `incoming`, `transmit`, `sent`, `ack`, `fail`, `open`, `lcars` (the LCARS title button), `belay`, `abort`, `acknowledged` (the BELAY, ABORT and ACKNOWLEDGED buttons) |
 
 `LCARS_CONFIG` can point to a config file somewhere else. Settings ending in `_JSON` take JSON text when set as environment variables.
 
@@ -126,7 +126,7 @@ The PADD plays short original tones when you tap buttons, open a channel, send a
 On the US coast, the PADD can show a tide chart. Run `python3 configure.py tides` (or the `location` step), pick the nearest NOAA station, then restart the server. A **06 CETACEAN OPS** button appears on the lower spine.
 
 - **The screen:** a tide curve with a moving NOW marker. Nighttime is shaded (sunrise and sunset come from the weather feed), the past is dimmed, and highs and lows are labeled. Minus tides, good for tide pooling, are in orange. The heading says whether the tide is rising or falling, and the strip at the bottom lists the next four tides.
-- **Buttons:** **12 HOURS** and **24 HOURS** change the span. **RETURN** goes back to the dashboard, and so does leaving it untouched for 90 seconds.
+- **Buttons:** **12 HOURS** and **24 HOURS** change the span. **ABORT** goes back to the dashboard, and so does leaving it untouched for 90 seconds.
 - **Data:** the server asks NOAA for the high and low times every 6 hours and keeps the last good copy, so a short internet outage doesn't blank the chart. Heights are measured from MLLW (mean lower low water), like printed tide tables. The curve between a high and a low is drawn the standard way (a smooth half-wave), so it can be a few inches off NOAA's minute-by-minute numbers.
 - **Finding a station by hand:** go to [tidesandcurrents.noaa.gov](https://tidesandcurrents.noaa.gov), find your area on the map, and copy the 7-digit station ID.
 

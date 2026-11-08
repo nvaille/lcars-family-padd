@@ -473,6 +473,27 @@ class SectionTests(unittest.TestCase):
         server.normalize_messaging(server_cfg, warn=warnings.append)
         self.assertEqual(warnings, [])
 
+    def test_sounds_maps_belay_abort_acknowledged(self):
+        for name in ("back.wav", "close.wav", "ok.wav"):
+            open(os.path.join(self.sounds, name), "w").close()
+        answers = ["", "", "", "", "", "",
+                   "y",           # choose files
+                   "9", "1",      # belay -> back.wav
+                   "10", "2",     # abort -> close.wav
+                   "11", "3",     # acknowledged -> ok.wav
+                   "",            # done with cues
+                   ""]            # save
+        self.assertEqual(self.run_section("sounds", answers, existing={}), 0, self.text())
+        mapping = {"belay": "back.wav", "abort": "close.wav", "acknowledged": "ok.wav"}
+        self.assertEqual(self.saved()["sound_files"], mapping)
+        for text in ("BELAY: back one screen", "ABORT: back to the main screen",
+                     "ACKNOWLEDGED, after a message is sent"):
+            self.assertIn(text, self.text())
+        server_cfg = dict(server.DEFAULTS, sound_files=dict(mapping))
+        warnings = []
+        server.normalize_messaging(server_cfg, warn=warnings.append)
+        self.assertEqual((warnings, server_cfg["sound_files"]), ([], mapping))
+
     def test_sounds_off_and_quiet_hours_off(self):
         self.run_section("sounds", ["n", ""])
         self.assertEqual(self.saved(), {"sounds_enabled": False})

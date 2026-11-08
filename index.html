@@ -985,7 +985,7 @@ body {
      Automatic cues (incoming, ack) are silent during quiet hours; cues a person
      triggers play at 30% volume then.
      ========================================================================== */
-  var CUE_ORDER = ['tap', 'open', 'transmit', 'sent', 'incoming', 'ack', 'fail', 'lcars'];
+  var CUE_ORDER = ['tap', 'open', 'belay', 'abort', 'transmit', 'sent', 'acknowledged', 'incoming', 'ack', 'fail', 'lcars'];
   var RELOAD_SOUND_MAX_MS = 2000;   // the LCARS button waits at most this long for its sound
   var AUTO_CUES = { incoming: true, ack: true };
   var QUIET_VOLUME = 0.3;
@@ -1049,6 +1049,14 @@ body {
       tone(t, 784, 0, 0.06, v * 0.6, 'triangle');
       tone(t + 0.07, 1175, 0, 0.06, v * 0.6, 'triangle');
       tone(t + 0.14, 1568, 0, 0.12, v * 0.6, 'triangle');
+    } else if (name === 'belay') {              // BELAY: two quick falling notes
+      tone(t, 784, 0, 0.07, v * 0.6, 'triangle');
+      tone(t + 0.08, 587, 0, 0.1, v * 0.6, 'triangle');
+    } else if (name === 'abort') {              // ABORT: downward sweep, channel closing
+      tone(t, 990, 330, 0.22, v * 0.6, 'triangle');
+    } else if (name === 'acknowledged') {       // ACKNOWLEDGED: bright double blip
+      tone(t, 1319, 0, 0.06, v * 0.6, 'sine');
+      tone(t + 0.08, 1319, 0, 0.1, v * 0.6, 'sine');
     }
   }
 
@@ -1404,6 +1412,10 @@ body {
   }
   function goDash() { show('dash'); }
   function goLog() { comms.logPage = 0; show('log'); }
+  // Button actions with their own sound cue (the idle timeout uses goDash/goLog silently).
+  function abortToDash() { cue('abort'); goDash(); }
+  function belayToLog() { cue('belay'); show('log'); }
+  function acknowledgedToLog() { cue('acknowledged'); goLog(); }
 
   function render() {
     stopDataCascade();
@@ -1518,7 +1530,7 @@ body {
     for (var i = page * PER_PAGE; i < msgs.length && i < (page + 1) * PER_PAGE; i++) {
       main.appendChild(logRow(msgs[i]));
     }
-    spine([{ t: 'RETURN', fn: goDash },
+    spine([{ t: 'ABORT', fn: abortToDash },
            { t: 'OPEN CHANNEL', fn: function () { startCompose({ origin: 'log' }); } }]
       .concat(pageButtons(page, msgs.length, function (p) { comms.logPage = p; render(); })));
   }
@@ -1549,14 +1561,14 @@ body {
     show('detail');
   }
 
-  function detailReturn() {
-    if (comms.detailFrom === 'dash') { goDash(); } else { show('log'); }
-  }
-
   function renderDetail() {
     var m = findMsg(comms.detailId);
     if (!m) { show('log'); return; }   // pruned after 24 hours
-    var title, sig, buttons = [{ t: 'RETURN', fn: detailReturn }];
+    // ABORT always goes to the main screen; BELAY steps back to the log when it was opened from there.
+    var title, sig, buttons = [{ t: 'ABORT', fn: abortToDash }];
+    if (comms.detailFrom !== 'dash') {
+      buttons.push({ t: 'BELAY', fn: belayToLog });
+    }
     if (m.dir === 'in') {
       title = 'Transmission' + MID + 'From ' + m.from + (m.for ? MID + 'For ' + m.for : '');
       sig = msgTime(m) + MID + 'RECEIVED';
@@ -1640,9 +1652,10 @@ body {
     show('compose');
   }
 
-  function stepBack() {
+  function stepBack() {   // BELAY
+    cue('belay');
     var c = comms.c, prev = c.history.pop();
-    if (!prev) { abortCompose(); return; }
+    if (!prev) { leaveCompose(); return; }
     c.step = prev.step;
     c.from = prev.from;
     c.preset = prev.preset;
@@ -1651,12 +1664,27 @@ body {
     render();
   }
 
+  // ABORT: drop the draft and go straight to the main screen.
   function abortCompose() {
+    comms.c = null;
+    abortToDash();
+  }
+
+  // BELAY from the first step: back to the screen HAIL / OPEN CHANNEL / REPLY was tapped on.
+  function leaveCompose() {
     var origin = comms.c ? comms.c.origin : 'dash';
     comms.c = null;
     if (origin === 'log') { show('log'); }
     else if (origin === 'detail' && findMsg(comms.detailId)) { show('detail'); }
     else { goDash(); }
+  }
+
+  // First two spine slots on compose screens: ABORT, then BELAY unless stepping back
+  // would land on the main screen anyway (first step of a HAIL from the dashboard).
+  function composeSpine() {
+    var c = comms.c;
+    return [{ t: 'ABORT', fn: abortCompose },
+            c.history.length || c.origin !== 'dash' ? { t: 'BELAY', fn: stepBack } : null];
   }
 
   function renderCompose() {
@@ -1709,9 +1737,8 @@ body {
       var custom = c.preset === CUSTOM;
       var text = el('div', custom ? 'cf-text typed' : 'cf-text', '“' + composeText(c) + '”');
       main.appendChild(text);
-      panels(main, [{ t: 'TRANSMIT', fn: transmitCompose },
-                    { t: 'CHANGE', fn: function () { goStep('whom'); } }], 0);
-      spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }, null, null]);
+      spine(composeSpine().concat([{ t: 'TRANSMIT', fn: transmitCompose },
+                                   { t: 'CHANGE', fn: function () { goStep('whom'); } }]));
       if (custom) { fitText(text, 2.25, 1.25); }
       return;
     }
@@ -1720,7 +1747,7 @@ body {
     if (c.page > pageCount(items.length, per) - 1) { c.page = pageCount(items.length, per) - 1; }
     main.sigEl.textContent = pageSig(c.page, items.length, sig, per);
     panels(main, items, c.page, per, CHOICE_COLORS);
-    spine([{ t: 'ABORT', fn: abortCompose }, { t: 'RETURN', fn: stepBack }]
+    spine(composeSpine()
       .concat(pageButtons(c.page, items.length, function (p) { c.page = p; render(); }, per)));
   }
 
@@ -1787,8 +1814,8 @@ body {
     abort.onclick = tapper(function () { field.blur(); abortCompose(); });
     update();
 
-    spine([{ t: 'ABORT', fn: function () { field.blur(); abortCompose(); } },
-           { t: 'RETURN', fn: function () { field.blur(); stepBack(); } }, null, null]);
+    // ABORT already sits by the field (the keyboard can cover the spine), so the spine only adds BELAY.
+    spine([{ t: 'BELAY', fn: function () { field.blur(); stepBack(); } }, null, null, null]);
     try { field.focus(); } catch (e) {}   // iOS opens the keyboard only if this runs inside the tap
   }
 
@@ -1869,14 +1896,13 @@ body {
       main = bay('Open Channel', 'COMMS NOMINAL', false);
       main.appendChild(el('div', 'rs-big', 'TRANSMISSION SENT' + MID + r.time));
       main.appendChild(el('div', 'rs-sub', route));
-      spine([{ t: 'RETURN', fn: goLog }, null, null, null]);
+      spine([{ t: 'ACKNOWLEDGED', fn: acknowledgedToLog }, null, null, null]);   // same place the timer goes
     } else {
       main = bay('Open Channel', 'CHANNEL FAULT', true);
       main.appendChild(el('div', 'rs-big fail', 'TRANSMISSION FAILED'));
       main.appendChild(el('div', 'rs-sub', r.reason));
       main.appendChild(el('div', 'rs-sub', route));
-      panels(main, [{ t: 'RETRANSMIT', fn: retransmit }, { t: 'ABORT', fn: goLog }], 0);
-      spine([{ t: 'RETURN', fn: goLog }, null, null, null]);
+      spine([{ t: 'ABORT', fn: abortToDash }, { t: 'RETRANSMIT', fn: retransmit }, null, null]);
     }
   }
 
@@ -2027,7 +2053,7 @@ body {
     var sig = !tides.online ? 'SIGNAL LOST' : (!d ? 'SCANNING' :
               (next.length ? (next[0].type === 'H' ? 'TIDE RISING \u25B2' : 'TIDE FALLING \u25BC') : 'NO PREDICTIONS'));
     var main = bay('Cetacean Ops', sig, !tides.online, 'hd-td');
-    spine([{ t: 'RETURN', fn: goDash }, spanButton(12), spanButton(24), null]);
+    spine([{ t: 'ABORT', fn: abortToDash }, spanButton(12), spanButton(24), null]);
     if (!d) {
       main.appendChild(el('div', 'cm-msg', tides.online ? 'ACQUIRING TIDAL TELEMETRY' : 'TIDAL SENSORS OFFLINE'));
       return;
