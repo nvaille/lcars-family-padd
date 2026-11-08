@@ -320,6 +320,9 @@ The real Star Trek effects belong to CBS/Paramount. This public MIT-licensed rep
   | `ack` | Soft single chime when a contact taps a quick reply |
   | `fail` | Low double buzz |
   | `open` | Gentle two-note "channel open" when entering COMMS |
+  | `belay` | Two quick falling notes (BELAY: back one screen) |
+  | `abort` | Downward sweep (ABORT: back to the main screen) |
+  | `acknowledged` | Bright double blip (ACKNOWLEDGED after a send) |
 
 - **Optional: user-supplied files.** Drop `.mp3`, `.m4a` or `.wav` files into `sounds/` and map them in `sound_files`. The folder is git-ignored apart from a README placeholder.
 - **Optional, later: bundled CC0 packs**, with the license checked file by file and recorded in `sounds/CREDITS.md`.

@@ -65,6 +65,9 @@ CUE_HELP = {
     "fail": "a message could not be sent",
     "open": "the comms screens open",
     "lcars": "the LCARS button, which reloads",
+    "belay": "BELAY: back one screen",
+    "abort": "ABORT: back to the main screen",
+    "acknowledged": "ACKNOWLEDGED, after a message is sent",
 }
 MISSING = object()
 
@@ -601,7 +604,7 @@ class Setup(Prompts):
 
     def _show_cues(self, cues, mapping):
         for i, cue in enumerate(cues):
-            self.out("  %d. %-9s %-36s %s" % (i + 1, cue, "(" + CUE_HELP[cue] + ")",
+            self.out("  %2d. %-12s %-40s %s" % (i + 1, cue, "(" + CUE_HELP[cue] + ")",
                                              mapping.get(cue, "built-in tone")))
 
     def _sound_files(self):

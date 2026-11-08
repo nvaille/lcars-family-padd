@@ -11,7 +11,7 @@ To use your own sounds instead:
    "sound_files": {"incoming": "hail.mp3", "sent": "confirm.wav"}
    ```
 
-   The cues are `tap`, `incoming`, `transmit`, `sent`, `ack`, `fail`, `open` and `lcars` (the LCARS title button, which reloads the page). A cue without a file keeps its built-in tone.
+   The cues are `tap`, `incoming`, `transmit`, `sent`, `ack`, `fail`, `open`, `lcars` (the LCARS title button, which reloads the page), and `belay`, `abort` and `acknowledged` (the BELAY, ABORT and ACKNOWLEDGED buttons). A cue without a file keeps its built-in tone.
 
    Easier: run `python3 configure.py sounds`. It lists the files in this folder and lets you pick one for each cue.
 3. Restart the server and reload the PADD.
