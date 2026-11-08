@@ -84,14 +84,14 @@ These are original UI strings in a Star Trek style, all caps per the existing CS
 | Pick the recipient | SELECT CHANNEL / HAIL WHOM? |
 | Recipient: everyone | ALL HANDS |
 | Send button | TRANSMIT |
-| Cancel | ABORT |
+| Cancel, back to the main screen | ABORT |
 | Sending | TRANSMITTING… |
 | Sent | TRANSMISSION SENT |
 | Contact tapped a quick reply | ACKNOWLEDGED BY <NAME> |
 | Failed | TRANSMISSION FAILED · SUBSPACE INTERFERENCE |
 | Retry | RETRANSMIT |
 | One-tap reply on a received message | ACKNOWLEDGE |
-| Back | RETURN |
+| Back one screen | BELAY |
 | Status code (the `.sig` spot) | COMMS NOMINAL / 2 UNREAD / CHANNEL OFFLINE |
 | Audio not yet unlocked | AUDIO STANDBY · TOUCH TO ARM |
 | Quiet hours active | SILENT RUNNING |
@@ -123,7 +123,7 @@ SPINE            LOWER BAY (unchanged: weather | stoic / mission log)
 
 ```
 SPINE            ┌ COMMUNICATIONS LOG ───────────────── 3 UNREAD ┐
-[RETURN     ]    ◀ MOM → SAM      15:42  Pizza tonight, home by 6   ● NEW
+[ABORT      ]    ◀ MOM → SAM      15:42  Pizza tonight, home by 6   ● NEW
 [OPEN CHANNEL]   ▶ SAM → ALL      15:31  I'm home from school       ✓ ACK DAD
 [▲ PAGE     ]    ▶ RILEY → DAD    12:05  Need a ride                SENT
 [▼ PAGE     ]    ◀ DAD            08:10  Have a good day            READ
@@ -138,14 +138,16 @@ SPINE            ┌ COMMUNICATIONS LOG ─────────────�
 
 ```
 SPINE            ┌ TRANSMISSION · FROM MOM · FOR SAM ─── 15:42 · RECEIVED ┐
-[RETURN     ]
+[ABORT      ]
+[BELAY      ]
 [ACKNOWLEDGE]    "Pizza tonight. Home by 6.
 [REPLY      ]     Start your homework."          (2.25rem, like .quote)
 ```
 - Opening a message marks it READ.
 - **ACKNOWLEDGE** sends a one-tap "Got it" back to the sender. It's signed with the addressed kid, or asks WHO IS TRANSMITTING? when the message wasn't addressed to anyone.
 - **REPLY** opens Screen 3 with the recipient already set to the sender.
-- Outgoing messages show `RETURN`, plus `RETRANSMIT` if the send failed.
+- **ABORT** goes to the main screen. **BELAY** (back to the log) shows only when the message was opened from the log.
+- Outgoing messages show ABORT and BELAY, plus `RETRANSMIT` if the send failed.
 - Long text shrinks to fit using the same loop as `fitQuote()`.
 
 ### Screen 3: Open channel (compose)
@@ -183,7 +185,8 @@ CHANGE goes back to 3c.
 **3e. Result**
 - TRANSMIT shows `TRANSMITTING…`, animated like the data cascade.
 - Success shows `TRANSMISSION SENT · 15:44` for 3 seconds, then returns to Screen 1.
-- Failure shows `TRANSMISSION FAILED` with RETRANSMIT and ABORT.
+- Failure shows `TRANSMISSION FAILED` with RETRANSMIT and ABORT. ABORT goes to the main screen.
+- Compose screens show ABORT (main screen) and BELAY (back one step). The first step of a HAIL from the main screen shows only ABORT, since BELAY would land in the same place.
 
 **Fastest path for the main use:** HAIL → SAM → I'M HOME FROM SCHOOL → TRANSMIT. That's **4 taps**, or 3 in a one-kid home.
 
