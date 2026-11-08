@@ -1023,8 +1023,8 @@ body {
 
   function synth(name, v) {
     var t = audio.ctx.currentTime + 0.02, s, i;
-    if (name === 'tap') {                       // short high blip
-      tone(t, 1200, 0, 0.04, v * 0.5, 'triangle');
+    if (name === 'tap' || name === 'belay' || name === 'abort' || name === 'acknowledged') {
+      tone(t, 1200, 0, 0.04, v * 0.5, 'triangle');   // short high blip (BELAY/ABORT/ACKNOWLEDGED share it)
     } else if (name === 'incoming') {           // rising three-tone chirp, twice
       for (i = 0; i < 2; i++) {
         s = t + i * 0.55;
@@ -1049,14 +1049,6 @@ body {
       tone(t, 784, 0, 0.06, v * 0.6, 'triangle');
       tone(t + 0.07, 1175, 0, 0.06, v * 0.6, 'triangle');
       tone(t + 0.14, 1568, 0, 0.12, v * 0.6, 'triangle');
-    } else if (name === 'belay') {              // BELAY: two quick falling notes
-      tone(t, 784, 0, 0.07, v * 0.6, 'triangle');
-      tone(t + 0.08, 587, 0, 0.1, v * 0.6, 'triangle');
-    } else if (name === 'abort') {              // ABORT: downward sweep, channel closing
-      tone(t, 990, 330, 0.22, v * 0.6, 'triangle');
-    } else if (name === 'acknowledged') {       // ACKNOWLEDGED: bright double blip
-      tone(t, 1319, 0, 0.06, v * 0.6, 'sine');
-      tone(t + 0.08, 1319, 0, 0.1, v * 0.6, 'sine');
     }
   }
 
