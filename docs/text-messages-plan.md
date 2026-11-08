@@ -169,7 +169,7 @@ SAM · CHANNEL OPEN
 - Presets come from config, for example `{"text":"I'M HOME FROM SCHOOL","to":"ALL"}`. The `to` field is optional.
 - **CUSTOM MESSAGE** (phase 2, hidden while `allow_custom_messages` is false) puts a text field in the **top half** of the bay. The iOS keyboard covers about the bottom 45% in landscape.
   - The field has a `118 / 160` counter.
-  - TRANSMIT and ABORT sit next to the field, not below it.
+  - TRANSMIT and ABORT sit next to the field, not below it. The spine shows only BELAY, since the keyboard can cover it.
 
 **3c. HAIL WHOM?** (only when the preset has no default recipient, or when CHANGE is tapped)
 ```

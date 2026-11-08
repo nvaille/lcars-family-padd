@@ -1668,12 +1668,10 @@ body {
 
   // First two spine slots on compose screens: ABORT, then BELAY unless stepping back
   // would land on the main screen anyway (first step of a HAIL from the dashboard).
-  // before() runs first on both (the typing screen closes the keyboard).
-  function composeSpine(before) {
+  function composeSpine() {
     var c = comms.c;
-    var go = function (fn) { return function () { if (before) { before(); } fn(); }; };
-    return [{ t: 'ABORT', fn: go(abortCompose) },
-            c.history.length || c.origin !== 'dash' ? { t: 'BELAY', fn: go(stepBack) } : null];
+    return [{ t: 'ABORT', fn: abortCompose },
+            c.history.length || c.origin !== 'dash' ? { t: 'BELAY', fn: stepBack } : null];
   }
 
   function renderCompose() {
@@ -1803,7 +1801,8 @@ body {
     abort.onclick = tapper(function () { field.blur(); abortCompose(); });
     update();
 
-    spine(composeSpine(function () { field.blur(); }).concat([null, null]));
+    // ABORT already sits by the field (the keyboard can cover the spine), so the spine only adds BELAY.
+    spine([{ t: 'BELAY', fn: function () { field.blur(); stepBack(); } }, null, null, null]);
     try { field.focus(); } catch (e) {}   // iOS opens the keyboard only if this runs inside the tap
   }
 
