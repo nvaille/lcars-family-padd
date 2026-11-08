@@ -1726,9 +1726,8 @@ body {
       var custom = c.preset === CUSTOM;
       var text = el('div', custom ? 'cf-text typed' : 'cf-text', '“' + composeText(c) + '”');
       main.appendChild(text);
-      panels(main, [{ t: 'TRANSMIT', fn: transmitCompose },
-                    { t: 'CHANGE', fn: function () { goStep('whom'); } }], 0);
-      spine(composeSpine().concat([null, null]));
+      spine(composeSpine().concat([{ t: 'TRANSMIT', fn: transmitCompose },
+                                   { t: 'CHANGE', fn: function () { goStep('whom'); } }]));
       if (custom) { fitText(text, 2.25, 1.25); }
       return;
     }
@@ -1891,8 +1890,7 @@ body {
       main.appendChild(el('div', 'rs-big fail', 'TRANSMISSION FAILED'));
       main.appendChild(el('div', 'rs-sub', r.reason));
       main.appendChild(el('div', 'rs-sub', route));
-      panels(main, [{ t: 'RETRANSMIT', fn: retransmit }, { t: 'ABORT', fn: goDash }], 0);
-      spine([{ t: 'ABORT', fn: goDash }, null, null, null]);
+      spine([{ t: 'ABORT', fn: goDash }, { t: 'RETRANSMIT', fn: retransmit }, null, null]);
     }
   }
 

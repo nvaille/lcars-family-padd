@@ -178,14 +178,14 @@ SAM · CHANNEL OPEN
 
 **3d. Confirm**
 ```
-SAM → ALL HANDS   "I'M HOME FROM SCHOOL"    [ TRANSMIT ]  [ CHANGE ]  [ ABORT ]
+SAM → ALL HANDS   "I'M HOME FROM SCHOOL"
 ```
-CHANGE goes back to 3c.
+Spine: ABORT, BELAY, TRANSMIT, CHANGE. CHANGE goes back to 3c.
 
 **3e. Result**
 - TRANSMIT shows `TRANSMITTING…`, animated like the data cascade.
 - Success shows `TRANSMISSION SENT · 15:44` for 3 seconds, then returns to Screen 1. Tapping ACKNOWLEDGED goes there right away.
-- Failure shows `TRANSMISSION FAILED` with RETRANSMIT and ABORT. ABORT goes to the main screen.
+- Failure shows `TRANSMISSION FAILED`, with ABORT (main screen) and RETRANSMIT on the spine.
 - Compose screens show ABORT (main screen) and BELAY (back one step). The first step of a HAIL from the main screen shows only ABORT, since BELAY would land in the same place.
 
 **Fastest path for the main use:** HAIL → SAM → I'M HOME FROM SCHOOL → TRANSMIT. That's **4 taps**, or 3 in a one-kid home.
