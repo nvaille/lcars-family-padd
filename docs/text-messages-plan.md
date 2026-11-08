@@ -184,7 +184,7 @@ CHANGE goes back to 3c.
 
 **3e. Result**
 - TRANSMIT shows `TRANSMITTING…`, animated like the data cascade.
-- Success shows `TRANSMISSION SENT · 15:44` for 3 seconds, then returns to Screen 1.
+- Success shows `TRANSMISSION SENT · 15:44` for 3 seconds, then returns to Screen 1. Tapping ACKNOWLEDGED goes there right away.
 - Failure shows `TRANSMISSION FAILED` with RETRANSMIT and ABORT. ABORT goes to the main screen.
 - Compose screens show ABORT (main screen) and BELAY (back one step). The first step of a HAIL from the main screen shows only ABORT, since BELAY would land in the same place.
 

@@ -1885,7 +1885,7 @@ body {
       main = bay('Open Channel', 'COMMS NOMINAL', false);
       main.appendChild(el('div', 'rs-big', 'TRANSMISSION SENT' + MID + r.time));
       main.appendChild(el('div', 'rs-sub', route));
-      spine([{ t: 'ABORT', fn: goDash }, null, null, null]);
+      spine([{ t: 'ACKNOWLEDGED', fn: goLog }, null, null, null]);   // same place the timer goes
     } else {
       main = bay('Open Channel', 'CHANNEL FAULT', true);
       main.appendChild(el('div', 'rs-big fail', 'TRANSMISSION FAILED'));
