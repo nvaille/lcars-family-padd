@@ -17,6 +17,7 @@ import functools
 import json
 import os
 import re
+import signal
 import threading
 import time as _time  # 'time' is datetime.time below
 import urllib.error
@@ -1562,7 +1563,18 @@ def make_server(port, directory=BASE_DIR):
     return httpd
 
 
+def _stop_on_sigterm(signum, frame):
+    # `docker stop` and systemd send SIGTERM; treat it like Ctrl+C so the
+    # server shuts down cleanly instead of being force-killed after a timeout.
+    raise KeyboardInterrupt
+
+
+def install_stop_signal():
+    signal.signal(signal.SIGTERM, _stop_on_sigterm)
+
+
 if __name__ == "__main__":
+    install_stop_signal()
     MESSAGING = build_messaging(CONFIG)
     TIDES = build_tides(CONFIG)
     print("Tides: station %s." % CONFIG["tide_station_id"] if TIDES else "Tides: off.")
@@ -1581,3 +1593,7 @@ if __name__ == "__main__":
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nShutting down.")
+    finally:
+        if MESSAGING is not None:
+            MESSAGING.stop()
+        httpd.server_close()
