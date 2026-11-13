@@ -4,6 +4,7 @@
   "longitude": -122.4194,
   "location_name": "San Francisco, CA",
   "port": 8000,
+  "allowed_hosts": [],
   "max_events": 5,
   "lookahead_days": 60,
   "timed_default_minutes": 60,

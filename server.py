@@ -14,6 +14,7 @@ Standard library only; Python 3.9+ recommended (3.7+ works, without TZID support
 """
 
 import functools
+import ipaddress
 import json
 import os
 import re
@@ -46,7 +47,8 @@ DEFAULTS = {
     "longitude": 0.0,
     "location_name": "",         # label shown above the weather panel
     "port": 8000,
-    "max_events": 5,             # how many events the kiosk receives
+    "allowed_hosts": [],         # extra host names the kiosk page may be opened with (see README)
+    "max_events": 5,            # how many events the kiosk receives
     "lookahead_days": 60,        # how far ahead recurring events are expanded
     "timed_default_minutes": 60, # assumed length of a timed event with no DTEND/DURATION
     "nightly_reload": True,      # kiosk reloads itself at 3 a.m. to keep old Safari stable
@@ -91,6 +93,7 @@ ENV_VARS = {
     "longitude": "LCARS_LONGITUDE",
     "location_name": "LCARS_LOCATION_NAME",
     "port": "LCARS_PORT",
+    "allowed_hosts": "LCARS_ALLOWED_HOSTS",
     "max_events": "LCARS_MAX_EVENTS",
     "lookahead_days": "LCARS_LOOKAHEAD_DAYS",
     "timed_default_minutes": "LCARS_TIMED_DEFAULT_MINUTES",
@@ -251,6 +254,34 @@ def normalize_messaging(cfg, warn=print):
 TIDE_STATION_RE = re.compile(r"^[A-Za-z0-9]{5,12}$")
 
 
+def host_only(value):
+    """'Padd.LAN:8000' -> 'padd.lan', '[::1]:8000' -> '::1'. For Host headers and settings."""
+    host = str(value or "").strip().lower()
+    if host.startswith("["):
+        end = host.find("]")
+        host = host[1:end] if end > 0 else host[1:]
+    elif host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    return host.rstrip(".")
+
+
+def normalize_hosts(cfg):
+    """Clean up allowed_hosts in place: bare lower-case host names, no ports."""
+    cfg["allowed_hosts"] = [h for h in (host_only(v) for v in _as_list(cfg["allowed_hosts"], "allowed_hosts")) if h]
+    return cfg
+
+
+def normalize_calendar(cfg, warn=print):
+    """webcal:// is just https:// for our purposes. Never prints the feed URL (it is a secret)."""
+    url = str(cfg["ics_feed_url"] or "").strip()
+    if url.lower().startswith("webcal://"):
+        url = "https://" + url[len("webcal://"):]
+    if url and not url.lower().startswith(("https://", "http://")):
+        warn("ics_feed_url must start with https:// or webcal://; the calendar will show a sync error.")
+    cfg["ics_feed_url"] = url
+    return cfg
+
+
 def normalize_tides(cfg, warn=print):
     """Clean up the tide settings in place."""
     station = str(cfg["tide_station_id"] or "").strip()
@@ -287,9 +318,8 @@ def load_config():
         cfg[key] = float(cfg[key])
     for key in ("port", "max_events", "lookahead_days", "timed_default_minutes"):
         cfg[key] = int(cfg[key])
-    # webcal:// is just https:// for our purposes
-    if cfg["ics_feed_url"].startswith("webcal://"):
-        cfg["ics_feed_url"] = "https://" + cfg["ics_feed_url"][len("webcal://"):]
+    normalize_calendar(cfg)
+    normalize_hosts(cfg)
     normalize_messaging(cfg)
     normalize_tides(cfg)
     return cfg
@@ -599,8 +629,66 @@ def expand(start, tz, rule, window_end, exdates):
                 yield occ
 
 
+def event_occurrences(ev, overridden, now, window_end):
+    """The not-yet-finished occurrences of one VEVENT: [(start, all_day, summary), ...].
+
+    Raises (usually ValueError) if the event is malformed, e.g. an unreadable RRULE."""
+    sp, sv = first(ev, "DTSTART")
+    if not sv:
+        return []
+    if (first(ev, "STATUS")[1] or "").upper() == "CANCELLED":
+        return []
+    try:
+        wall_start, all_day, tz = parse_dt(sv, sp)
+    except ValueError:
+        return []
+    start = to_local(wall_start, tz)
+
+    # length of the event
+    ep, evv = first(ev, "DTEND")
+    dp, dv = first(ev, "DURATION")
+    length = None
+    try:
+        if evv:
+            end, _ = parse_local(evv, ep)
+            length = end - start
+        elif dv:
+            length = parse_duration(dv)
+    except ValueError:
+        pass
+    if length is None or length.total_seconds() <= 0:
+        length = timedelta(days=1) if all_day else timedelta(minutes=TIMED_DEFAULT_MINUTES)
+
+    summary = unescape(first(ev, "SUMMARY")[1] or "Scheduled Event")
+    uid = first(ev, "UID")[1]
+
+    rp, rv = first(ev, "RRULE")
+    if rv:
+        exdates = set()
+        for xp, xv in ev.get("EXDATE", []):
+            for item in xv.split(","):
+                try:
+                    exdates.add(parse_local(item, xp)[0])
+                except ValueError:
+                    pass
+        starts = expand(wall_start, tz, parse_rrule(rv), window_end, exdates)
+    else:
+        starts = [start]
+
+    found = []
+    for occ in starts:
+        if rv and (uid, occ) in overridden:
+            continue
+        if occ + length <= now:     # already finished
+            continue
+        found.append((occ, all_day, summary))
+    return found
+
+
 def collect_upcoming(ics_text, everything=False):
-    """Upcoming events for the kiosk (the first MAX_EVENTS, or all of them for the setup wizard)."""
+    """Upcoming events for the kiosk (the first MAX_EVENTS, or all of them for the setup wizard).
+
+    An event that can't be read is skipped (and counted in the log); it never hides the rest."""
     now = datetime.now()
     today = datetime.combine(now.date(), time.min)
     window_end = today + timedelta(days=LOOKAHEAD_DAYS)
@@ -612,60 +700,20 @@ def collect_upcoming(ics_text, everything=False):
     for ev in raw:
         p, v = first(ev, "RECURRENCE-ID")
         if v:
-            uid = first(ev, "UID")[1]
-            rid, _ = parse_local(v, p)
-            overridden.add((uid, rid))
+            try:
+                overridden.add((first(ev, "UID")[1], parse_local(v, p)[0]))
+            except ValueError:
+                pass
 
     out = []
+    skipped = 0
     for ev in raw:
-        sp, sv = first(ev, "DTSTART")
-        if not sv:
-            continue
-        if (first(ev, "STATUS")[1] or "").upper() == "CANCELLED":
-            continue
         try:
-            wall_start, all_day, tz = parse_dt(sv, sp)
-        except ValueError:
-            continue
-        start = to_local(wall_start, tz)
-
-        # length of the event
-        ep, evv = first(ev, "DTEND")
-        dp, dv = first(ev, "DURATION")
-        length = None
-        try:
-            if evv:
-                end, _ = parse_local(evv, ep)
-                length = end - start
-            elif dv:
-                length = parse_duration(dv)
-        except ValueError:
-            pass
-        if length is None or length.total_seconds() <= 0:
-            length = timedelta(days=1) if all_day else timedelta(minutes=TIMED_DEFAULT_MINUTES)
-
-        summary = unescape(first(ev, "SUMMARY")[1] or "Scheduled Event")
-        uid = first(ev, "UID")[1]
-
-        rp, rv = first(ev, "RRULE")
-        if rv:
-            exdates = set()
-            for xp, xv in ev.get("EXDATE", []):
-                for item in xv.split(","):
-                    try:
-                        exdates.add(parse_local(item, xp)[0])
-                    except ValueError:
-                        pass
-            starts = expand(wall_start, tz, parse_rrule(rv), window_end, exdates)
-        else:
-            starts = [start]
-
-        for occ in starts:
-            if rv and (uid, occ) in overridden:
-                continue
-            if occ + length <= now:     # already finished
-                continue
-            out.append((occ, all_day, summary))
+            out.extend(event_occurrences(ev, overridden, now, window_end))
+        except Exception:  # one odd event must never blank the whole calendar
+            skipped += 1
+    if skipped:
+        print("Calendar: skipped %d event(s) that could not be read." % skipped)
 
     out.sort(key=lambda e: (e[0], not e[1]))
     events = []
@@ -1376,7 +1424,42 @@ TIDES = None      # set in __main__ (or by tests)
 # HTTP server
 # ---------------------------------------------------------------------------
 
+def host_allowed(header, extra=()):
+    """Guard against DNS rebinding: a malicious web page can point its own domain name at this
+    server and then read it as if it were the same site. Real kiosk URLs use an IP address,
+    localhost, a single-word name or a .local name; a public-style name must be listed in
+    allowed_hosts. A request with no Host header can't come from a browser, so it passes."""
+    if not header:
+        return True
+    host = host_only(header)
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    return "." not in host or host.endswith(".local") or host in extra
+
+
+def calendar_error_text(e):
+    """An error for the log that can never contain the private calendar URL.
+
+    Network errors read like 'HTTP Error 403' or 'timed out'. Anything else (for example a
+    ValueError, which can quote the URL it was given) is logged by type only."""
+    if isinstance(e, (urllib.error.URLError, OSError)):
+        text = str(e)
+        return text.replace(ICS_FEED_URL, "<feed>") if ICS_FEED_URL else text
+    return type(e).__name__
+
+
 class LCARSHandler(SimpleHTTPRequestHandler):
+    def host_ok(self):
+        if host_allowed(self.headers.get("Host"), CONFIG["allowed_hosts"]):
+            return True
+        self.send_error(421, "Unrecognised host name; add it to allowed_hosts")
+        return False
+
     def send_json(self, status, payload):
         body = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -1392,6 +1475,8 @@ class LCARSHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         self._revalidate = False
+        if not self.host_ok():
+            return
         path = self.path.split("?", 1)[0]
         if ICON_ALIAS.match(path) or path == "/favicon.ico":
             self.path = path = ICON_PATH
@@ -1408,7 +1493,7 @@ class LCARSHandler(SimpleHTTPRequestHandler):
                 if not events:
                     events = [{"summary": "No upcoming events scheduled", "time": "--:--", "date": ""}]
             except Exception as e:
-                print("Calendar error:", e)
+                print("Calendar error:", calendar_error_text(e))
                 events = [{"summary": "Calendar Feed Sync Error", "time": "ERR", "date": ""}]
             self.send_json(200, events)
 
@@ -1505,6 +1590,8 @@ class LCARSHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         raw = self.read_body()
+        if not self.host_ok():
+            return
         path = self.path.split("?", 1)[0]
         read_match = re.match(r"^/api/messages/([0-9a-f]{12})/read$", path)
         if path != "/api/messages" and not read_match:
