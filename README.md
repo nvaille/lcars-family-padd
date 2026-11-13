@@ -39,6 +39,7 @@ Settings live in `config.json`, which is git-ignored so your private calendar UR
 | `latitude`, `longitude` | `LCARS_LATITUDE`, `LCARS_LONGITUDE` | Weather location |
 | `location_name` | `LCARS_LOCATION_NAME` | Label shown above the weather panel |
 | `port` | `LCARS_PORT` | HTTP port (default `8000`) |
+| `allowed_hosts` | `LCARS_ALLOWED_HOSTS` | Extra host names the kiosk page may be opened with, e.g. `["padd.home"]` or `padd.home,padd2.home`. Only needed if you use a dotted DNS name; IP addresses, `localhost`, single-word names and `.local` names always work (default none) |
 | `max_events` | `LCARS_MAX_EVENTS` | Events sent to the kiosk (default `5`) |
 | `lookahead_days` | `LCARS_LOOKAHEAD_DAYS` | How far ahead recurring events are expanded (default `60`) |
 | `timed_default_minutes` | `LCARS_TIMED_DEFAULT_MINUTES` | Assumed length of events with no end time (default `60`) |
@@ -155,7 +156,7 @@ To load a new version of the dashboard, tap the **LCARS 2247** title. It reloads
 
 ## Security notes
 
-The server only serves the dashboard and static assets (`.html`, `.css`, `.js`, fonts, images), plus any sound files you list in `sound_files` (only from `sounds/`). Requests for `config.json`, `messages.json`, `server.py`, dotfiles and anything else return 404. `/api/tides` returns only public NOAA predictions for your station. `/api/config` exposes only display values (the location label, sound settings, and, when messaging is on, crew and contact *names* and presets). It never exposes the calendar URL, the bot token or chat IDs. The server has no authentication, so run it on your home network only.
+The server only serves the dashboard and static assets (`.html`, `.css`, `.js`, fonts, images), plus any sound files you list in `sound_files` (only from `sounds/`). Requests for `config.json`, `messages.json`, `server.py`, dotfiles and anything else return 404. `/api/tides` returns only public NOAA predictions for your station. `/api/config` exposes only display values (the location label, sound settings, and, when messaging is on, crew and contact *names* and presets). It never exposes the calendar URL, the bot token or chat IDs. The server has no authentication, so run it on your home network only. It also refuses requests that arrive under a public-style host name (a web page can trick a browser into reaching a home server that way, called DNS rebinding): open the kiosk by IP address, `localhost`, a single-word name or a `.local` name, or list a dotted name in `allowed_hosts`. Error messages in the server log never include your calendar URL.
 
 Text messages:
 
