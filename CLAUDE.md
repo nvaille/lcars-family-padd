@@ -3,6 +3,8 @@
 A retro-futuristic LCARS family dashboard for wall-mounted kiosks. Public, MIT-licensed repo:
 `nvaille/lcars-family-padd` (owner's personal GitHub account).
 
+If this folder sits inside a larger setup with a parent `../CLAUDE.md`, read it too: it holds cross-project rules and wins on shared contracts. This repo is **public**, so never copy private hostnames, IPs, tokens or other setup details into it.
+
 ## Files
 
 - `server.py`: Python HTTP server (standard library only). Serves `index.html` and the `/api/*` JSON endpoints.
@@ -27,6 +29,7 @@ A retro-futuristic LCARS family dashboard for wall-mounted kiosks. Public, MIT-l
    - Never serve anything new through the static-file handler that could leak config or secrets.
    - `/api/config` exposes only non-secret display values.
    - Don't log message bodies or secrets.
+5. **Other tooling depends on the server's port (8000 by default) and the `/api/*` response shapes** (for example firewall rules, backups and deploy scripts). Check before changing them, and say so in the PR description.
 
 ## Git rules
 
