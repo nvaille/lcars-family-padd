@@ -158,13 +158,13 @@ class EventsLogTests(ServerCase):
 
 class HostCheckUnitTests(unittest.TestCase):
     def test_host_only(self):
-        for value, expected in (("Padd.LAN:8000", "padd.lan"), ("192.168.1.36:8000", "192.168.1.36"),
+        for value, expected in (("Padd.LAN:8000", "padd.lan"), ("192.0.2.10:8000", "192.0.2.10"),
                                 ("[::1]:8000", "::1"), ("[fe80::1]", "fe80::1"), ("evil.example.com.", "evil.example.com"),
                                 ("padd", "padd"), ("", ""), (None, "")):
             self.assertEqual(server.host_only(value), expected, value)
 
     def test_normal_kiosk_addresses_are_allowed(self):
-        for header in ("192.168.1.36:8000", "10.0.0.5", "127.0.0.1:8000", "[::1]:8000", "localhost:8000",
+        for header in ("192.0.2.10:8000", "10.0.0.5", "127.0.0.1:8000", "[::1]:8000", "localhost:8000",
                        "padd", "padd:8000", "padd.local:8000", "PADD.LOCAL"):
             self.assertTrue(server.host_allowed(header), header)
 
@@ -174,7 +174,7 @@ class HostCheckUnitTests(unittest.TestCase):
 
     def test_public_style_names_are_refused(self):
         for header in ("evil.example.com", "evil.example.com:8000", "EVIL.example.com.", "padd.home",
-                       "192.168.1.36.evil.example.com", "localhost.evil.com", ":8000"):
+                       "192.0.2.10.evil.example.com", "localhost.evil.com", ":8000"):
             self.assertFalse(server.host_allowed(header), header)
 
     def test_allowed_hosts_setting_opens_a_name(self):
@@ -209,10 +209,10 @@ class HostCheckHTTPTests(ServerCase):
             status, raw = self.request("GET", "/api/config", host=host)
             self.assertEqual(status, 200, host)
             self.assertIn(b"location_name", raw)
-        self.assertEqual(self.request("GET", "/", host="192.168.1.36:8000")[0], 200)
+        self.assertEqual(self.request("GET", "/", host="192.0.2.10:8000")[0], 200)
 
     def test_post_with_a_normal_host_still_reaches_the_endpoint(self):
-        status, _ = self.request("POST", "/api/messages", host="192.168.1.36:8000", body=b"{}",
+        status, _ = self.request("POST", "/api/messages", host="192.0.2.10:8000", body=b"{}",
                                  headers={"X-LCARS-Kiosk": "1", "Content-Type": "application/json"})
         self.assertEqual(status, 503)   # messaging is off here; not 421
 
